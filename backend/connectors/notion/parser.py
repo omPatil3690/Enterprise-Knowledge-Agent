@@ -1,8 +1,8 @@
 """
 Notion Data Extraction & Normalization Parser.
 
-Transforms raw Notion API JSON (page, block, and database responses) into our standardized
-intermediate representation while retaining essential metadata, hierarchy, and source attribution.
+Transforms raw Notion API JSON (page, block, database, and table responses) into our standardized
+intermediate representation while retaining essential metadata, tabular schemas, and source attribution.
 Filters out unsupported or non-textual blocks (PDFs, videos, audios, files, and bookmarks).
 """
 
@@ -36,6 +36,8 @@ SUPPORTED_BLOCK_TYPES = {
     "code": "code",
     "quote": "quote",
     "callout": "callout",
+    "table": "table",
+    "table_row": "table_row",
 }
 
 
@@ -58,13 +60,147 @@ def extract_rich_text(rich_text: List[Dict[str, Any]]) -> str:
     return "".join(texts)
 
 
+def extract_property_value(prop_data: Dict[str, Any]) -> Any:
+    """
+    Extracts a clean, typed Python value from any Notion database property object.
+    Supports numbers, dates, selects, multi-selects, titles, text, checkboxes, statuses, and formulas.
+    """
+    if not isinstance(prop_data, dict):
+        return None
+
+    p_type = prop_data.get("type")
+    if not p_type:
+        return None
+
+    if p_type == "title":
+        return extract_rich_text(prop_data.get("title", []))
+    elif p_type == "rich_text":
+        return extract_rich_text(prop_data.get("rich_text", []))
+    elif p_type == "number":
+        return prop_data.get("number")
+    elif p_type == "select":
+        select_obj = prop_data.get("select")
+        return select_obj.get("name") if select_obj else None
+    elif p_type == "multi_select":
+        return [s.get("name") for s in prop_data.get("multi_select", []) if s.get("name")]
+    elif p_type == "date":
+        date_obj = prop_data.get("date")
+        if not date_obj:
+            return None
+        start = date_obj.get("start")
+        end = date_obj.get("end")
+        return f"{start} -> {end}" if end else start
+    elif p_type == "checkbox":
+        return prop_data.get("checkbox", False)
+    elif p_type == "status":
+        status_obj = prop_data.get("status")
+        return status_obj.get("name") if status_obj else None
+    elif p_type == "url":
+        return prop_data.get("url")
+    elif p_type == "email":
+        return prop_data.get("email")
+    elif p_type == "phone_number":
+        return prop_data.get("phone_number")
+    elif p_type == "formula":
+        f_obj = prop_data.get("formula", {})
+        f_type = f_obj.get("type")
+        return f_obj.get(f_type) if f_type else None
+    elif p_type == "created_time":
+        return prop_data.get("created_time")
+    elif p_type == "last_edited_time":
+        return prop_data.get("last_edited_time")
+    elif p_type == "people":
+        return [p.get("name") or p.get("id") for p in prop_data.get("people", [])]
+    elif p_type == "relation":
+        return [r.get("id") for r in prop_data.get("relation", [])]
+    
+    # Fallback to general type retrieval
+    return prop_data.get(p_type)
+
+
+def extract_database_block(block: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extracts a Notion child_database (used for charts, tables, metric tracking, task boards).
+    Extracts full column schemas, typed row records, and builds a summary representation.
+    """
+    title = block.get("child_database", {}).get("title", "")
+    db_rows = block.get("database_rows", [])
+    block_id = block.get("id", "")
+
+    # Discover columns and extract row data
+    columns_set = set()
+    rows_data: List[Dict[str, Any]] = []
+
+    for row in db_rows:
+        row_id = row.get("id", "")
+        props = row.get("properties", {})
+        row_dict: Dict[str, Any] = {}
+
+        for col_name, prop_val in props.items():
+            val = extract_property_value(prop_val)
+            if val is not None and val != "":
+                row_dict[col_name] = val
+                columns_set.add(col_name)
+
+        if row_dict:
+            rows_data.append({
+                "id": row_id,
+                "data": row_dict
+            })
+
+    columns_list = sorted(list(columns_set))
+
+    # Construct descriptive summary text for search indexing
+    summary_lines = [f"Database / Chart: {title or 'Untitled'} ({len(rows_data)} records)"]
+    if columns_list:
+        summary_lines.append(f"Columns: {', '.join(columns_list)}")
+
+    return {
+        "type": "database",
+        "text": "\n".join(summary_lines),
+        "block_id": block_id,
+        "has_children": bool(rows_data),
+        "columns": columns_list,
+        "rows": rows_data,
+        "total_rows": len(rows_data),
+    }
+
+
+def extract_table_block(block: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extracts a Notion simple table block and its table_row children.
+    """
+    table_data = block.get("table", {})
+    raw_children = block.get("children", [])
+    has_column_header = table_data.get("has_column_header", False)
+    
+    extracted_rows: List[List[str]] = []
+    for child in raw_children:
+        if child.get("type") == "table_row":
+            cells = child.get("table_row", {}).get("cells", [])
+            row_cells = [extract_rich_text(cell).strip() for cell in cells]
+            extracted_rows.append(row_cells)
+
+    headers = extracted_rows[0] if (has_column_header and extracted_rows) else []
+    data_rows = extracted_rows[1:] if (has_column_header and extracted_rows) else extracted_rows
+
+    return {
+        "type": "table",
+        "text": f"Table ({len(extracted_rows)} rows)",
+        "block_id": block.get("id"),
+        "has_children": bool(extracted_rows),
+        "headers": headers,
+        "rows": data_rows,
+    }
+
+
 def extract_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Converts a raw Notion block JSON into our normalized block representation.
 
     Filters out unsupported, media, and file blocks (PDFs, videos, audio, files, bookmarks),
     while preserving semantic knowledge blocks (headings, paragraphs, bullet lists, toggles,
-    code, callouts, quotes, databases) and their nested hierarchies.
+    code, callouts, quotes, databases, tables) and their nested hierarchies.
     """
     block_type = block.get("type")
     if not block_type:
@@ -74,50 +210,15 @@ def extract_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if block_type in IGNORED_BLOCK_TYPES:
         return None
 
-    # Handle child_database (e.g. "Todo List" inline database)
+    # 1. Handle Databases (Charts, Data Tables, Metric Boards, Task Trackers)
     if block_type == "child_database":
-        title = block.get("child_database", {}).get("title", "")
-        db_rows = block.get("database_rows", [])
-        
-        extracted_db: Dict[str, Any] = {
-            "type": "database",
-            "text": title.strip() or "Database",
-            "block_id": block.get("id"),
-            "has_children": bool(db_rows),
-        }
+        return extract_database_block(block)
 
-        if db_rows:
-            row_items = []
-            for row in db_rows:
-                row_title = ""
-                is_checked = False
-                props = row.get("properties", {})
-                
-                for p_val in props.values():
-                    if isinstance(p_val, dict):
-                        if p_val.get("type") == "title":
-                            row_title = extract_rich_text(p_val.get("title", []))
-                        elif p_val.get("type") == "checkbox":
-                            is_checked = p_val.get("checkbox", False)
-                        elif p_val.get("type") == "status":
-                            status_name = p_val.get("status", {}).get("name", "")
-                            if status_name.lower() in ("done", "completed"):
-                                is_checked = True
-                
-                if row_title.strip():
-                    row_items.append({
-                        "type": "to_do",
-                        "text": row_title.strip(),
-                        "block_id": row.get("id"),
-                        "checked": is_checked,
-                    })
-            
-            if row_items:
-                extracted_db["children"] = row_items
+    # 2. Handle Simple Inline Tables
+    if block_type == "table":
+        return extract_table_block(block)
 
-        return extracted_db
-
-    # Handle child_page (nested sub-page link)
+    # 3. Handle child_page (nested sub-page link)
     if block_type == "child_page":
         title = block.get("child_page", {}).get("title", "")
         raw_children = block.get("children", [])
@@ -137,7 +238,7 @@ def extract_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 extracted_page_link["children"] = normalized_children
         return extracted_page_link
 
-    # Check if block type is supported
+    # 4. Check if standard block type is supported
     if block_type not in SUPPORTED_BLOCK_TYPES:
         return None
 
@@ -231,7 +332,7 @@ def extract_page_metadata(page: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_page(page: Dict[str, Any], blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Combines page metadata and block extraction into a clean normalized Document dictionary,
-    filtering out media/files/bookmarks and preserving block hierarchies.
+    preserving full tabular database records and hierarchies.
     """
     document = extract_page_metadata(page)
 

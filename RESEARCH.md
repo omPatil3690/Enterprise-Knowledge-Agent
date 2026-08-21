@@ -440,6 +440,7 @@ Document
 ```
 
 This gives us a clean foundation without prematurely coupling the normalized knowledge model to every detail of the Notion API.
+
 # Where Does MCP Fit?
 
 This is where things get really interesting.
@@ -882,3 +883,161 @@ Document
 ```
 
 This gives us a clean foundation without prematurely coupling the normalized knowledge model to every detail of the Notion API.
+
+---
+
+Exactly. One page ID is only our unit of processing, not the scope of the connector.
+
+We ultimately need to synchronize the entire set of Notion pages that our integration is allowed to access.
+
+The architecture becomes:
+
+                    Notion Workspace
+                          │
+                          ▼
+                  Discover accessible pages
+                          │
+             ┌────────────┼────────────┐
+             ▼            ▼            ▼
+          Page A        Page B       Page C
+             │            │            │
+             ▼            ▼            ▼
+          Extract      Extract      Extract
+             │            │            │
+             └────────────┼────────────┘
+                          ▼
+                    Normalize
+                          ▼
+                    Knowledge Store
+
+The important part: synchronization
+
+We don't want to repeatedly process every page.
+
+We need to distinguish:
+
+NEW
+MODIFIED
+UNCHANGED
+
+and eventually:
+
+DELETED / NO LONGER ACCESSIBLE
+
+For each page, we already get useful information from Notion such as:
+
+page_id
+last_edited_time
+
+So we can maintain something like:
+
+Our metadata store
+
+## page_id last_synced_at source_updated_at
+
+A 10:00 09:55
+B 10:02 10:02
+C 10:03 09:40
+
+When synchronization runs:
+
+Notion
+│
+▼
+Discover pages
+│
+▼
+Compare page metadata
+│
+├── New → process
+├── Modified → process again
+└── Unchanged → skip
+
+For example:
+
+Notion says:
+
+Page A → last edited = 10:30
+Our store → last processed = 10:00
+
+10:30 > 10:00
+↓
+Re-process Page A
+
+But:
+
+Page B → last edited = 10:00
+Our store → last processed = 10:00
+
+same
+↓
+skip
+One important architectural decision
+
+We should not overwrite everything blindly when a page changes.
+
+The lifecycle should eventually be:
+
+Notion Page
+↓
+Retrieve latest version
+↓
+Parse
+↓
+Normalize
+↓
+Replace/update old representation
+↓
+Re-index
+
+Because if the content changed, the old:
+
+chunks
+embeddings
+keyword index entries
+graph relationships
+
+may no longer be valid.
+
+So eventually a modification triggers something like:
+
+Page modified
+│
+▼
+Re-extract
+│
+▼
+Re-normalize
+│
+├── Update vector index
+├── Update keyword index
+└── Update graph
+But don't implement synchronization yet
+
+For our current stage, I would keep the problem separated:
+
+Stage 1
+
+Given page_id
+↓
+retrieve complete page
+↓
+parse
+↓
+normalize
+
+Stage 2
+
+Discover all accessible pages
+↓
+identify new/changed pages
+↓
+call Stage 1 for each
+
+This is a very important design principle: the page processor should not care whether a page was discovered for the first time or because it changed. It simply receives a page ID and produces the latest representation.
+
+Then the synchronization layer decides which page IDs need processing.
+
+So yes, your understanding is correct: the final connector is a synchronization system, not just a single-page API client. The single-page flow we're building now is the core processing unit that the later sync mechanism will repeatedly invoke.
+
+---
