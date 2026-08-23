@@ -316,3 +316,16 @@ This document maintains a chronological record of all architectural decisions, c
 - [`.gitignore`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.gitignore)
 
 ---
+
+## Step 20: Environment Configuration Template (`.env.example`)
+- **Date:** 2026-08-23
+- **Time:** 22:59:48 IST
+- **Purpose:** Provide a clean, documented template for environment variables across connectors (Notion, Confluence, Jira, GitHub, Slack), LLM providers (Gemini, OpenAI), Vector stores (Qdrant, Chroma), and Neo4j Knowledge Graph.
+
+### Key Decisions & Rationale:
+1. **Clear Modular Sections**: Structured with clear headings and links to developer setup portals for rapid onboarding.
+
+### Files Created:
+- [`.env.example`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.env.example)
+
+---
