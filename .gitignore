@@ -2,9 +2,10 @@
 .env
 .env.*
 !.env.example
-
 # Python
 __pycache__/
+*.pyc
+test_data
 *.py[cod]
 *$py.class
 *.so
