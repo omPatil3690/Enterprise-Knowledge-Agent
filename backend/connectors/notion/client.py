@@ -7,13 +7,21 @@ Handles all network I/O with the Notion API, including:
 - Page metadata retrieval (/v1/pages/{id})
 - Cursor-based pagination (has_more / next_cursor)
 - Recursive child block retrieval for nested structures (toggles, lists, callouts)
-- Child database row querying (/v1/databases/{id}/query)
+- Child database row querying (/v1/databases/{id}/query) with resilient error recovery
 """
 
 import os
 import time
 from typing import Any, Dict, List, Optional
 import requests
+
+
+def format_uuid(val: str) -> str:
+    """Ensures UUID is formatted with standard hyphens (8-4-4-4-12) as expected by Notion API."""
+    clean = val.replace("-", "").strip()
+    if len(clean) == 32:
+        return f"{clean[:8]}-{clean[8:12]}-{clean[12:16]}-{clean[16:20]}-{clean[20:]}"
+    return val
 
 
 class NotionClient:
@@ -56,34 +64,50 @@ class NotionClient:
         except Exception:
             return False
 
-    def search_pages(self, query: str = "") -> List[Dict[str, Any]]:
+    def search_pages(
+        self,
+        query: str = "",
+        filter_object: Optional[str] = None,
+        sort_by_edited: bool = True,
+    ) -> List[Dict[str, Any]]:
         """
-        Discovers all accessible pages in the workspace using POST /v1/search.
-        Handles cursor pagination.
+        Discovers all accessible pages and data sources in the workspace using POST /v1/search.
+        If filter_object is None (default), returns all shared pages, wikis, and databases.
         
         Args:
-            query: Optional search text to filter page titles.
+            query: Optional search text to filter page titles. If empty, returns all shared objects.
+            filter_object: 'page', 'data_source', 'database', or None (returns everything).
+            sort_by_edited: If True, sorts by last_edited_time descending.
 
         Returns:
-            List of page object dictionaries.
+            List of page / database object dictionaries.
         """
         url = f"{self.BASE_URL}/search"
         pages: List[Dict[str, Any]] = []
         cursor: Optional[str] = None
 
         while True:
-            body: Dict[str, Any] = {
-                "page_size": 100,
-                "filter": {"value": "page", "property": "object"}
-            }
+            body: Dict[str, Any] = {"page_size": 100}
+
+            if filter_object:
+                body["filter"] = {"value": filter_object, "property": "object"}
+
+            if sort_by_edited:
+                body["sort"] = {
+                    "direction": "descending",
+                    "timestamp": "last_edited_time"
+                }
+
             if query:
                 body["query"] = query
+
             if cursor:
                 body["start_cursor"] = cursor
 
             response = self.session.post(url, json=body)
             if response.status_code == 429:
-                time.sleep(int(response.headers.get("Retry-After", 1)))
+                retry_after = int(response.headers.get("Retry-After", 1))
+                time.sleep(retry_after)
                 continue
             response.raise_for_status()
 
@@ -99,18 +123,24 @@ class NotionClient:
 
     def get_page(self, page_id: str) -> Dict[str, Any]:
         """
-        Fetches page-level metadata for a given page ID.
-        Tries /pages/{id} first, with fallback to /blocks/{id}.
+        Fetches metadata for a given page or database ID.
+        Tries /pages/{id} -> /databases/{id} -> /blocks/{id}.
         """
-        clean_id = page_id.replace("-", "")
-        url = f"{self.BASE_URL}/pages/{clean_id}"
+        formatted_id = format_uuid(page_id)
+        url = f"{self.BASE_URL}/pages/{formatted_id}"
         
         response = self.session.get(url)
         if response.status_code == 200:
             return response.json()
         
-        # Fallback to block endpoint if /pages/ failed (e.g. for some workspace root blocks)
-        block_url = f"{self.BASE_URL}/blocks/{clean_id}"
+        # Fallback to /databases/ endpoint if it's a root database
+        db_url = f"{self.BASE_URL}/databases/{formatted_id}"
+        db_response = self.session.get(db_url)
+        if db_response.status_code == 200:
+            return db_response.json()
+
+        # Fallback to /blocks/ endpoint if /pages/ failed
+        block_url = f"{self.BASE_URL}/blocks/{formatted_id}"
         block_response = self.session.get(block_url)
         if block_response.status_code == 200:
             return block_response.json()
@@ -121,10 +151,10 @@ class NotionClient:
     def fetch_database_rows(self, database_id: str) -> List[Dict[str, Any]]:
         """
         Queries all rows/items inside a Notion child_database via POST /v1/databases/{id}/query.
-        Handles cursor pagination.
+        Handles cursor pagination with resilient error recovery.
         """
-        clean_id = database_id.replace("-", "")
-        url = f"{self.BASE_URL}/databases/{clean_id}/query"
+        formatted_id = format_uuid(database_id)
+        url = f"{self.BASE_URL}/databases/{formatted_id}/query"
         rows: List[Dict[str, Any]] = []
         cursor: Optional[str] = None
 
@@ -133,19 +163,31 @@ class NotionClient:
             if cursor:
                 body["start_cursor"] = cursor
 
-            response = self.session.post(url, json=body)
-            if response.status_code == 429:
-                time.sleep(int(response.headers.get("Retry-After", 1)))
-                continue
-            response.raise_for_status()
+            try:
+                response = self.session.post(url, json=body)
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", 1))
+                    time.sleep(retry_after)
+                    continue
 
-            data = response.json()
-            results = data.get("results", [])
-            rows.extend(results)
+                if response.status_code != 200:
+                    try:
+                        err_msg = response.json().get("message", response.text)
+                    except Exception:
+                        err_msg = response.text
+                    print(f"    ⚠️ Notice: Could not query database rows for {formatted_id} ({response.status_code}: {err_msg})")
+                    break
 
-            if not data.get("has_more"):
+                data = response.json()
+                results = data.get("results", [])
+                rows.extend(results)
+
+                if not data.get("has_more"):
+                    break
+                cursor = data.get("next_cursor")
+            except Exception as e:
+                print(f"    ⚠️ Notice: Database query skipped for {formatted_id}: {e}")
                 break
-            cursor = data.get("next_cursor")
 
         return rows
 
@@ -171,8 +213,8 @@ class NotionClient:
         Returns:
             List of raw Notion block dictionaries, with nested children/rows attached.
         """
-        clean_id = block_id.replace("-", "")
-        url = f"{self.BASE_URL}/blocks/{clean_id}/children"
+        formatted_id = format_uuid(block_id)
+        url = f"{self.BASE_URL}/blocks/{formatted_id}/children"
         
         all_blocks: List[Dict[str, Any]] = []
         cursor: Optional[str] = None

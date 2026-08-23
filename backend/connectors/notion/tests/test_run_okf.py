@@ -25,6 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 load_dotenv(find_dotenv())
 
 from backend.connectors.notion.connector import NotionConnector
+from backend.connectors.notion.parser import extract_page_metadata
 from backend.models.okf import OKFBundle, OKFConcept, OKFPermissions
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -63,8 +64,23 @@ def run_okf_test(page_id: str = None, auto_discover: bool = False) -> None:
     # Ingest intermediate documents
     documents = []
     if auto_discover:
-        print("🌐 Ingesting all accessible pages in workspace...")
-        documents = connector.load_documents(auto_discover=True)
+        print("🌐 Searching all accessible pages and data sources in workspace...")
+        search_results = connector.client.search_pages(filter_object=None)
+        print(f"🔍 Discovered {len(search_results)} item(s) shared with this integration:")
+        
+        for idx, item in enumerate(search_results, 1):
+            obj_type = item.get("object", "page")
+            meta = extract_page_metadata(item)
+            title = meta.get("title") or "Untitled"
+            print(f"   [{idx}/{len(search_results)}] {obj_type.upper()}: \"{title}\" (ID: {item.get('id')})")
+
+        print("\n📥 Loading and normalizing discovered documents...")
+        for item in search_results:
+            p_id = item.get("id")
+            if p_id:
+                doc = connector.load_document_by_id(p_id)
+                if doc:
+                    documents.append(doc)
     elif target_page_id:
         print(f"📥 Ingesting Notion page: {target_page_id}...")
         doc = connector.load_document_by_id(target_page_id)
@@ -78,8 +94,8 @@ def run_okf_test(page_id: str = None, auto_discover: bool = False) -> None:
         print("⚠️ No documents were found or parsed.")
         return
 
-    print(f"📄 Ingested {len(documents)} intermediate document(s).")
-    print("🔄 Converting into Open Knowledge Format (OKF v0.2) Concepts...\n")
+    print(f"\n📄 Successfully parsed {len(documents)} document(s).")
+    print("🔄 Building Open Knowledge Format (OKF v0.2) Bundle...\n")
 
     # Create OKF Bundle
     bundle = OKFBundle(name="Enterprise Knowledge Bundle", okf_version="0.2")
@@ -142,7 +158,7 @@ def run_okf_test(page_id: str = None, auto_discover: bool = False) -> None:
         print(f"\n... [{len(full_md.splitlines()) - 35} more lines in file] ...")
 
     print("\n" + "=" * 65)
-    print("🎉 OKF v0.2 Knowledge Bundle successfully built in:")
+    print(f"🎉 OKF v0.2 Knowledge Bundle successfully built with {len(documents)} concept(s) in:")
     print(f"   {BUNDLE_DIR}")
     print("=" * 65 + "\n")
 
