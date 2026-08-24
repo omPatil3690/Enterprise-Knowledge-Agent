@@ -257,3 +257,75 @@ This document maintains a chronological record of all architectural decisions, c
 - [`backend/models/okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/okf.py)
 
 ---
+
+## Step 16: Verification & Alignment with Official Notion Search OpenAPI Specification
+- **Date:** 2026-08-21
+- **Time:** 23:16:01 IST
+- **Purpose:** Verify and upgrade `search_pages()` against the official Notion `POST /v1/search` OpenAPI 3.1.0 specification.
+
+### Key Decisions & Rationale:
+1. **OpenAPI Spec Compliance**:
+   - Upgraded `search_pages()` in `NotionClient` to include the standard `sort: {"direction": "descending", "timestamp": "last_edited_time"}` so pages are discovered in order of recency.
+   - Configurable `filter_object`: supports filtering by `"page"`, `"data_source"` / `"database"`, or retrieving all shared objects.
+   - Strict adherence to pagination (`page_size: 100`, `start_cursor`, `next_cursor`, `has_more`).
+
+### Files Modified:
+- [`backend/connectors/notion/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/notion/client.py)
+
+---
+
+## Step 17: Resilient Error Handling & Standard UUID Formatting for Notion Databases
+- **Date:** 2026-08-21
+- **Time:** 23:56:22 IST
+- **Purpose:** Prevent `400 Bad Request` or permissions errors on individual database queries from halting the ingestion of parent pages.
+
+### Key Decisions & Rationale:
+1. **Standard Hyphenated UUIDs (`format_uuid`)**: Formats all Notion IDs to standard `8-4-4-4-12` format (`2fb3317c-c712-8165-8fcf-d305c67818ae`) required by Notion endpoints.
+2. **Resilient Database Recovery**: In `fetch_database_rows()`, non-200 responses (e.g. linked database views without external permissions or empty data source blocks) log a clean notice and return `[]` instead of raising an uncaught exception, allowing the parent page and all its other content to finish loading seamlessly.
+
+### Files Modified:
+- [`backend/connectors/notion/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/notion/client.py)
+
+---
+
+## Step 18: Unfiltered Workspace Discovery & Item Enumeration Logging
+- **Date:** 2026-08-22
+- **Time:** 00:02:46 IST
+- **Purpose:** Ensure all objects (pages, wikis, root databases) are discovered without restrictive filters, and print explicit discovery summaries during test runs.
+
+### Key Decisions & Rationale:
+1. **Default `filter_object=None`**: Changed `search_pages()` default to `None` so Notion returns all shared assets across the workspace without omitting non-page types.
+2. **Terminal Enumeration**: `test_run_okf.py` now prints every discovered item name, type, and ID to clearly show which pages are visible to the connection token.
+
+### Files Modified:
+- [`backend/connectors/notion/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/notion/client.py)
+- [`backend/connectors/notion/tests/test_run_okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/notion/tests/test_run_okf.py)
+
+---
+
+## Step 19: Untrack Test Data Directories & Comprehensive .gitignore Configuration
+- **Date:** 2026-08-23
+- **Time:** 22:54:19 IST
+- **Purpose:** Ensure local test data, test JSON payloads, and generated OKF bundle artifacts are untracked by Git while preserved locally on disk.
+
+### Key Decisions & Rationale:
+1. **Git Index Cache Removal**: Executed `git rm -r --cached` on `backend/connectors/notion/test_data/` to remove tracked artifacts from Git staging while preserving local files on disk.
+2. **Comprehensive .gitignore**: Added `test_data/`, `**/test_data/`, `*.okf.md`, `*.okf.json`, Python cache, and virtual environment patterns to `.gitignore`.
+
+### Files Modified:
+- [`.gitignore`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.gitignore)
+
+---
+
+## Step 20: Environment Configuration Template (`.env.example`)
+- **Date:** 2026-08-23
+- **Time:** 22:59:48 IST
+- **Purpose:** Provide a clean, documented template for environment variables across connectors (Notion, Confluence, Jira, GitHub, Slack), LLM providers (Gemini, OpenAI), Vector stores (Qdrant, Chroma), and Neo4j Knowledge Graph.
+
+### Key Decisions & Rationale:
+1. **Clear Modular Sections**: Structured with clear headings and links to developer setup portals for rapid onboarding.
+
+### Files Created:
+- [`.env.example`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.env.example)
+
+---

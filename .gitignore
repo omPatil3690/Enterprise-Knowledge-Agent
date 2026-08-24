@@ -1,5 +1,26 @@
+# Environment Variables
 .env
-
+.env.*
+!.env.example
 # Python
 __pycache__/
 *.pyc
+test_data
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+ENV/
+
+# Test Data & Local Artifacts
+test_data/
+**/test_data/
+*.okf.md
+*.okf.json
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
