@@ -386,3 +386,23 @@ This document maintains a chronological record of all architectural decisions, c
 - [`backend/connectors/email/gmail/tests/test_gmail.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/test_gmail.py)
 
 ---
+
+## Step 25: Canonical Email Document Models (`EmailDocument`, `EmailAttachment`)
+- **Date:** 2026-08-25
+- **Time:** 14:54:44 IST
+- **Purpose:** Establish provider-independent email data models bridging raw email APIs (Gmail, Outlook, IMAP) to the system's intermediate Document format.
+
+### Key Decisions & Rationale:
+1. **Provider-Agnostic Schema**: Defined `EmailDocument` and `EmailAttachment` in `backend/connectors/email/models.py`.
+2. **Seamless Intermediate Bridge (`to_intermediate_document()`)**:
+   - Maps email headers into a clean `CALLOUT` block (`✉️`).
+   - Maps subject into a `HEADING_2` block.
+   - Parses email body text into semantic `PARAGRAPH` blocks.
+   - Attaches files into structured bullet list blocks with `📎` citations.
+   - Sets `parent_type="thread"` and `parent_id=thread_id` to preserve conversation relationships in downstream Graph RAG.
+
+### Files Created:
+- [`backend/connectors/email/models.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/models.py)
+- [`backend/connectors/email/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/__init__.py)
+
+---
