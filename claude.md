@@ -329,3 +329,60 @@ This document maintains a chronological record of all architectural decisions, c
 - [`.env.example`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.env.example)
 
 ---
+
+## Step 21: OAuth Secrets & Credential Exclusion in .gitignore
+- **Date:** 2026-08-25
+- **Time:** 13:33:33 IST
+- **Purpose:** Secure sensitive OAuth tokens (`token.json`, `credentials.json`, `client_secret*.json`, `service_account*.json`) used by Gmail/Google OAuth across all subdirectories from being tracked in Git.
+
+### Key Decisions & Rationale:
+1. **Glob Patterns for Nested Secrets**: Added `credentials.json`, `**/credentials.json`, `token.json`, `**/token.json`, `*.token.json`, `client_secret*.json`, and `service_account*.json` to `.gitignore`.
+
+### Files Modified:
+- [`.gitignore`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.gitignore)
+
+---
+
+## Step 22: Gmail Connector Setup & OAuth 2.0 Guide Documentation
+- **Date:** 2026-08-25
+- **Time:** 14:20:33 IST
+- **Purpose:** Document step-by-step setup, configuration of Google Cloud OAuth consent, test users, `gmail.readonly` scope, and local execution flow.
+
+### Key Decisions & Rationale:
+1. **Least-Privilege Security**: Enforced `https://www.googleapis.com/auth/gmail.readonly` over full mail access.
+2. **Complete Reference Guide**: Provided an in-depth reference inside `backend/connectors/email/gmail/README.md` covering Google Cloud Project creation, OAuth client setup, downloading `credentials.json`, installing libraries, and running `test_gmail.py`.
+
+### Files Created:
+- [`backend/connectors/email/gmail/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/README.md)
+
+---
+
+## Step 23: Centralized Documentation Directory (`documents.md`)
+- **Date:** 2026-08-25
+- **Time:** 14:27:49 IST
+- **Purpose:** Provide a centralized directory of all official external documentation, API references, developer consoles, and credential creation portals across all supported connectors, AI providers, and vector/graph databases.
+
+### Key Decisions & Rationale:
+1. **Comprehensive Directory Organization**: Organized into 6 structured sections: Email/Gmail, Notion, Atlassian (Confluence/Jira), Code/Collaboration (GitHub/Slack/Drive), LLM Providers (Gemini/OpenAI/Anthropic), and Databases (Qdrant/Chroma/Neo4j).
+
+### Files Created:
+- [`documents.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/documents.md)
+
+---
+
+## Step 24: Silent JSON Payload Export in `test_gmail.py`
+- **Date:** 2026-08-25
+- **Time:** 14:31:21 IST
+- **Purpose:** Redirect all Gmail API responses and raw message payloads directly into `backend/connectors/email/gmail/test_data/` instead of dumping sensitive emails into the terminal output.
+
+### Key Decisions & Rationale:
+1. **File-Based Output Redirection**:
+   - `inbox_messages_list.json`: Saved raw result from `messages.list(maxResults=5)`.
+   - `message_{id}.json`: Saved individual full message payloads.
+   - `all_sample_messages.json`: Saved complete batch of message data.
+2. **Clean Terminal Reporting**: Terminal only displays authentication status and generated output file paths.
+
+### Files Modified:
+- [`backend/connectors/email/gmail/tests/test_gmail.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/test_gmail.py)
+
+---

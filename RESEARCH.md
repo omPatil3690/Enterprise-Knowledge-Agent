@@ -1041,3 +1041,638 @@ Then the synchronization layer decides which page IDs need processing.
 So yes, your understanding is correct: the final connector is a synchronization system, not just a single-page API client. The single-page flow we're building now is the core processing unit that the later sync mechanism will repeatedly invoke.
 
 ---
+
+                    Email Connector
+                          │
+             ┌────────────┴────────────┐
+             ▼                         ▼
+        GmailConnector          OutlookConnector
+             │                         │
+        Gmail API              Microsoft Graph
+             │                         │
+             └────────────┬────────────┘
+                          ▼
+                  Normalized Email
+                          │
+                          ▼
+                         OKF
+                          │
+              ┌───────────┼───────────┐
+              ▼           ▼           ▼
+           Vector       Keyword      Graph
+             DB           DB           DB
+
+---
+
+Don't just extract:
+
+subject
+body
+
+For your Enterprise Knowledge Agent, an email should become something closer to:
+
+{
+"id": "provider-specific-id",
+"source": "gmail",
+"thread_id": "...",
+
+"subject": "Project Alpha Update",
+
+"sender": {
+"name": "John Smith",
+"email": "john@example.com"
+},
+
+"recipients": [
+{
+"name": "Alice",
+"email": "alice@example.com"
+}
+],
+
+"cc": [],
+
+"timestamp": "2026-08-23T10:30:00Z",
+
+"body": "...",
+
+"attachments": [],
+
+"labels": ["INBOX"],
+
+"metadata": {
+"is_read": true
+}
+}
+
+Then transform that into your OKF representation.
+
+---
+
+MIME representation most commonly refers to MIME types (Multipurpose Internet Mail Extensions) in computing, which tell a web browser or email client what kind of file or data it is receiving.Computing and Internet (MIME Type / Media Type)Definition: A standard way of describing the nature and format of a document, file, or piece of data (e.g., text/html, image/jpeg, or application/json).Structure: It uses a type and a subtype separated by a forward slash (type/subtype), such as audio/mpeg.Purpose: It helps software systems (like web servers and browsers) understand how to handle, display, or execute incoming files correctly.Performing Arts (Theatrical Mime)Definition: A form of silent art where an actor communicates a story, emotion, or character using only physical gestures, body movements, and facial expressions without speech.
+
+---
+
+![alt text](image.png)
+
+---
+
+1. First, what is this endpoint?
+
+You are looking at:
+
+GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages
+
+Break it down:
+
+https://gmail.googleapis.com
+│
+└── Gmail API server
+
+/gmail
+│
+└── Gmail API
+
+/v1
+│
+└── API version 1
+
+/users/{userId}
+/messages
+│
+└── resource being requested
+
+So in plain English:
+
+"Using version 1 of Google's Gmail API, give me the messages belonging to this user."
+
+For our application:
+
+GET /gmail/v1/users/me/messages
+
+means:
+
+"Give me the messages in the mailbox of the currently authenticated Gmail user."
+
+Google specifically documents me as a special value representing the authenticated user.
+
+2. What is v1?
+
+v1 means:
+
+Version 1 of the API.
+
+It's an API version identifier, not a Python version, Gmail version, HTTP version, etc.
+
+Think about an API as a contract between your application and Google.
+
+Suppose Google initially creates:
+
+/gmail/v1/...
+
+and promises:
+
+GET /gmail/v1/users/me/messages
+
+works in a particular way.
+
+Years later Google might need to introduce a fundamentally different API:
+
+/gmail/v2/...
+
+Now they can have:
+
+/gmail/v1/users/me/messages
+
+and
+
+/gmail/v2/users/me/messages
+
+coexist while applications migrate.
+
+This is why you frequently see:
+
+/api/v1/...
+
+in REST APIs.
+
+3. Why not just /gmail/users/me/messages?
+
+Because APIs evolve.
+
+Imagine your application is built in 2026:
+
+Your Application
+↓
+Gmail API v1
+
+Google changes the API in 2028.
+
+If they completely changed the behavior of the existing endpoint, your application could suddenly break.
+
+Instead, API versioning allows:
+
+                  Google API
+                     │
+            ┌────────┴────────┐
+            ▼                 ▼
+          v1 API            v2 API
+            │                 │
+       Old applications    New applications
+
+The old contract can remain available while newer clients use the new contract.
+
+4. Is v1 the first version ever?
+
+Not necessarily.
+
+This is an important distinction.
+
+v1 usually means the first stable/public version of that particular API contract, not necessarily:
+
+"Google has only ever had one version of this API."
+
+APIs can have:
+
+v1
+v2
+v3
+
+and sometimes intermediate versions or revisions.
+
+You should treat the version as part of the API's public interface.
+
+5. Now let's understand the complete endpoint
+
+You have:
+
+GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages
+
+There are several concepts here.
+
+GET
+
+This is the HTTP method.
+
+It means:
+
+"I want to retrieve something."
+
+For example:
+
+GET → retrieve
+POST → create/send
+PUT/PATCH → update
+DELETE → delete
+
+For our email connector, we'll mostly be using GET.
+
+gmail.googleapis.com
+
+This is the API server / host.
+
+Your Python program sends an HTTP request to this server.
+
+Conceptually:
+
+Your Python program
+│
+│ HTTPS request
+▼
+gmail.googleapis.com
+│
+▼
+Gmail API
+│
+▼
+Your mailbox
+/gmail
+
+This identifies the Gmail API service.
+
+/v1
+
+API version.
+
+v1 = Version 1
+/users/{userId}
+
+This identifies whose mailbox we're talking about.
+
+For example:
+
+/users/me
+
+or potentially:
+
+/users/user@example.com
+
+But in our application we'll use:
+
+users/me
+
+because we're accessing the mailbox belonging to the authenticated user.
+
+/messages
+
+This identifies the resource.
+
+We're asking for Gmail messages.
+
+So:
+
+/users/me/messages
+
+means:
+
+messages belonging to the authenticated user.
+
+6. What does {userId} mean?
+
+The {} notation means:
+
+This is a variable/path parameter.
+
+The documentation says:
+
+/users/{userId}/messages
+
+But we don't literally send:
+
+/users/{userId}/messages
+
+We replace {userId}.
+
+For our application:
+
+/users/me/messages
+
+The API then understands:
+
+me → authenticated Gmail account 7. What are query parameters?
+
+You also saw:
+
+maxResults
+pageToken
+q
+labelIds[]
+includeSpamTrash
+
+These are query parameters.
+
+They come after ?.
+
+For example:
+
+GET https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5
+
+Here:
+
+?maxResults=5
+
+is a query parameter.
+
+You can have multiple:
+
+?maxResults=5&includeSpamTrash=true
+
+Conceptually:
+
+Endpoint
+│
+├── Path parameters
+│
+└── Query parameters 8. Why does Gmail have q?
+
+This one is particularly useful for our connector.
+
+Gmail API supports Gmail's search syntax.
+
+For example:
+
+q=from:alice@example.com
+
+or:
+
+q=subject:project
+
+or:
+
+q=after:2026/08/01
+
+or:
+
+q=from:alice@example.com after:2026/08/01
+
+So our connector can do:
+
+service.users().messages().list(
+userId="me",
+q="after:2026/08/01",
+maxResults=100
+)
+
+instead of downloading everything.
+
+This will become very useful when we implement incremental/filtered ingestion.
+
+9. What does maxResults do?
+
+You saw:
+
+Maximum number of messages to return. Default 100. Maximum 500.
+
+So:
+
+maxResults=5
+
+means:
+
+Give me at most 5 messages in this response.
+
+That's what our test code is doing:
+
+messages().list(
+userId="me",
+labelIds=["INBOX"],
+maxResults=5
+) 10. But why does Gmail return only IDs?
+
+This is a very important API design decision.
+
+The response looks approximately like:
+
+{
+"messages": [
+{
+"id": "abc123",
+"threadId": "xyz123"
+},
+{
+"id": "def456",
+"threadId": "xyz456"
+}
+],
+"nextPageToken": "...",
+"resultSizeEstimate": 125
+}
+
+Gmail deliberately doesn't return the entire email for every message in list.
+
+Instead:
+
+messages.list()
+↓
+IDs
+↓
+messages.get(id)
+↓
+Actual email
+
+This is much more efficient.
+
+Imagine you have:
+
+50,000 emails
+
+and every email contains:
+
+subject
+body
+attachments
+headers
+MIME parts
+
+Returning all of that from a listing endpoint would be expensive.
+
+So Google separates:
+
+Discovery
+messages.list()
+
+from:
+
+Retrieval
+messages.get()
+
+This is a very common API design pattern.
+
+11. What is nextPageToken?
+
+Suppose you have:
+
+10,000 emails
+
+but:
+
+maxResults=500
+
+You don't get 10,000 messages in one response.
+
+You get:
+
+Page 1
+↓
+500 messages
+↓
+nextPageToken
+
+Then:
+
+Page 2
+↓
+500 messages
+↓
+nextPageToken
+
+and so on.
+
+Conceptually:
+
+messages.list()
+│
+▼
+┌──────────────┐
+│ 500 messages │
+└──────┬───────┘
+│
+▼
+nextPageToken
+│
+▼
+┌──────────────┐
+│ 500 messages │
+└──────┬───────┘
+│
+▼
+nextPageToken
+│
+▼
+...
+
+This is called pagination.
+
+We'll absolutely need to implement pagination in the real connector.
+
+12. What are authorization scopes?
+
+You saw:
+
+https://mail.google.com/
+https://www.googleapis.com/auth/gmail.modify
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.metadata
+
+These determine what your application is allowed to do.
+
+For our project:
+
+gmail.readonly
+
+is appropriate.
+
+Think of OAuth scopes as permissions:
+
+Application
+│
+├── gmail.readonly
+│ └── Read emails
+│
+├── gmail.modify
+│ └── Read + modify emails
+│
+└── mail.google.com
+└── Broad Gmail access
+
+This is directly relevant to your Enterprise Knowledge Agent's RBAC/security architecture. Your system should request the minimum provider permissions necessary.
+
+13. API version vs API library version
+
+This is another thing that confuses people.
+
+You might install:
+
+pip install google-api-python-client
+
+and see a Python package version such as:
+
+2.x.x
+
+That's not the same thing as:
+
+/gmail/v1/
+
+They are independent.
+
+google-api-python-client
+│
+└── Python client library version
+
+Gmail API
+│
+└── /v1/ API version
+
+Your Python library might be updated:
+
+google-api-python-client 2.x → 3.x
+
+while you're still using:
+
+Gmail API v1 14. You'll see this everywhere
+
+Once you start building connectors, you'll notice this pattern.
+
+For example:
+
+Gmail
+/gmail/v1/...
+
+GitHub
+/api/v3/...
+
+Microsoft Graph
+/v1.0/...
+
+The exact versioning strategy differs by API provider.
+
+Microsoft Graph is particularly interesting because it has:
+
+/v1.0/
+
+and:
+
+/beta/
+
+where beta is used for features that aren't guaranteed to remain stable.
+
+So API versioning is a fundamental REST/API design concept, not something specific to Gmail.
+
+15. Relating this back to our connector
+
+Our Gmail connector will eventually make requests like:
+
+Authentication
+│
+▼
+GET /gmail/v1/users/me/messages
+│
+▼
+message IDs
+│
+▼
+GET /gmail/v1/users/me/messages/{id}
+│
+▼
+raw Gmail message
+│
+▼
+Parser
+│
+▼
+EmailDocument
+│
+▼
+OKF
+
+And the nice thing is that you're now seeing why each part exists, rather than treating the Gmail Python SDK as a black box.
