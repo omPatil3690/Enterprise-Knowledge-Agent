@@ -393,7 +393,7 @@ This document maintains a chronological record of all architectural decisions, c
 - **Purpose:** Establish provider-independent email data models bridging raw email APIs (Gmail, Outlook, IMAP) to the system's intermediate Document format.
 
 ### Key Decisions & Rationale:
-1. **Provider-Agnostic Schema**: Defined `EmailDocument` and `EmailAttachment` in `backend/connectors/email/models.py`.
+1. **Provider-Agnostic Schema**: Defined `EmailDocument` and `EmailAttachment`.
 2. **Seamless Intermediate Bridge (`to_intermediate_document()`)**:
    - Maps email headers into a clean `CALLOUT` block (`✉️`).
    - Maps subject into a `HEADING_2` block.
@@ -402,7 +402,102 @@ This document maintains a chronological record of all architectural decisions, c
    - Sets `parent_type="thread"` and `parent_id=thread_id` to preserve conversation relationships in downstream Graph RAG.
 
 ### Files Created:
-- [`backend/connectors/email/models.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/models.py)
-- [`backend/connectors/email/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/__init__.py)
+- [`backend/models/email.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/email.py)
+
+---
+
+## Step 26: Centralized Global Models Layout (`backend/models/email.py`)
+- **Date:** 2026-08-25
+- **Time:** 18:35:51 IST
+- **Purpose:** Centralize all domain data models inside `backend/models/` for unified global model management across the entire codebase.
+
+### Key Decisions & Rationale:
+1. **Global Models Packaging**: Placed `EmailDocument` and `EmailAttachment` in `backend/models/email.py` and exported them directly from `backend/models/__init__.py`.
+2. **Clean Connector Interface**: `backend/connectors/email/__init__.py` re-exports from `backend.models.email`.
+
+### Files Created / Modified:
+- [`backend/models/email.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/email.py) (Created)
+- [`backend/models/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/__init__.py) (Updated exports)
+- [`backend/connectors/email/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/__init__.py) (Updated imports)
+
+---
+
+## Step 27: Recursive Gmail MIME & Payload Parser (`parser.py`)
+- **Date:** 2026-08-25
+- **Time:** 18:38:10 IST
+- **Purpose:** Implement recursive traversal of complex nested MIME email payloads (multipart/alternative, multipart/mixed), base64 decoding, header extraction, HTML cleanup, and conversion to canonical `EmailDocument`.
+
+### Key Decisions & Rationale:
+1. **Recursive DFS for MIME Trees**: Traverses all nested child parts in `_extract_mime_parts_recursive()` to cleanly separate `text/plain`, `text/html`, and attachments.
+2. **URL-Safe Base64 Padding Repair**: `decode_base64url()` automatically normalizes `-` / `_` and adds `=` padding before decoding.
+3. **HTML Sanitization Fallback**: `clean_html_to_text()` converts HTML tags to readable text when plaintext bodies are omitted.
+4. **Validation Test Suite**: Created `backend/connectors/email/gmail/tests/test_parser.py` and verified 100% successful parsing across real Gmail payloads.
+
+### Files Created:
+- [`backend/connectors/email/gmail/parser.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/parser.py)
+- [`backend/connectors/email/gmail/tests/test_parser.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/test_parser.py)
+
+---
+
+## Step 28: Update Pending Notes for Email Attachments (`NOTES.md`)
+- **Date:** 2026-08-25
+- **Time:** 18:43:07 IST
+- **Purpose:** Record pending task in `NOTES.md` for multimodal media, OCR, and binary attachment parsing for the Email/Gmail connector.
+
+### Key Decisions & Rationale:
+1. **Tracking Future Media Parsers**: Documented that OCR and multimodal attachment extraction (PDFs, images, audio, video) will be implemented as specialized extractors.
+
+### Files Modified:
+- [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md)
+
+---
+
+## Step 29: Gmail Client & BaseConnector Implementation (`client.py` & `connector.py`)
+- **Date:** 2026-08-25
+- **Time:** 18:58:35 IST
+- **Purpose:** Implement `GmailClient` and `GmailConnector` conforming to `BaseConnector` for connection verification, full message ingestion, single email lookup, and incremental synchronization.
+
+### Key Decisions & Rationale:
+1. **BaseConnector Conformance**: Implemented `test_connection()`, `load_documents()`, `load_document_by_id()`, and `sync_incremental()`.
+2. **Batch Retrieval & Paging**: `fetch_messages_batch()` in `GmailClient` automatically paginates through `users.messages.list` and retrieves full MIME payloads via `users.messages.get`.
+3. **Live Verification**: Created `backend/connectors/email/gmail/tests/test_run_connector.py` and successfully tested live inbox ingestion with intermediate Document generation and Markdown rendering.
+
+### Files Created / Modified:
+- [`backend/connectors/email/gmail/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/client.py) (Created)
+- [`backend/connectors/email/gmail/connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/connector.py) (Created)
+- [`backend/connectors/email/gmail/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/test_run_connector.py) (Created)
+- [`backend/connectors/email/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/__init__.py) (Updated exports)
+- [`backend/connectors/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/__init__.py) (Updated exports)
+
+---
+
+## Step 30: End-to-End OKF v0.2 Knowledge Bundle Runner for Gmail (`test_run_okf.py`)
+- **Date:** 2026-08-25
+- **Time:** 20:12:41 IST
+- **Purpose:** Implement end-to-end OKF v0.2 Knowledge Bundle generation for Gmail, saving individual `.okf.md`, `.okf.json`, progressive disclosure `index.md`, and chronological `log.md`.
+
+### Key Decisions & Rationale:
+1. **Dynamic Platform Provenance**: Upgraded `from_intermediate_document()` in `backend/models/okf.py` to dynamically attribute provenance sources (`gmail://messages/{id}`), verification processes (`process:gmail-sync`), and titles.
+2. **Complete Knowledge Bundle Export**: Generates full OKF v0.2 bundles inside `backend/connectors/email/gmail/test_data/okf_bundle/`.
+3. **Test Suite Documentation**: Created `backend/connectors/email/gmail/tests/README.md` documenting all test runners and data directories.
+
+### Files Created / Modified:
+- [`backend/connectors/email/gmail/tests/test_run_okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/test_run_okf.py) (Created)
+- [`backend/connectors/email/gmail/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/README.md) (Created)
+- [`backend/models/okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/okf.py) (Updated platform provenance)
+
+---
+
+## Step 31: Comprehensive Test Suite Documentation (`backend/connectors/email/gmail/tests/README.md`)
+- **Date:** 2026-08-25
+- **Time:** 20:18:32 IST
+- **Purpose:** Provide an in-depth, file-by-file testing reference and command cheat sheet for all Gmail connector test runners, MIME validators, payload extractors, and output data directories.
+
+### Key Decisions & Rationale:
+1. **Complete File Matrix**: Documented all 4 test scripts (`test_run_okf.py`, `test_run_connector.py`, `test_parser.py`, `test_gmail.py`) with input arguments, purpose, and generated output files.
+2. **Directory Layout Guide**: Outlined the complete storage layout under `backend/connectors/email/gmail/test_data/`.
+
+### Files Modified:
+- [`backend/connectors/email/gmail/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/README.md)
 
 ---

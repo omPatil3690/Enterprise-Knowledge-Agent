@@ -2,6 +2,8 @@
 Email Connectors Package.
 """
 
-from backend.connectors.email.models import EmailAttachment, EmailDocument
+from backend.models.email import EmailAttachment, EmailDocument
+from backend.connectors.email.gmail.connector import GmailConnector
+from backend.connectors.email.gmail.client import GmailClient
 
-__all__ = ["EmailDocument", "EmailAttachment"]
+__all__ = ["EmailDocument", "EmailAttachment", "GmailConnector", "GmailClient"]

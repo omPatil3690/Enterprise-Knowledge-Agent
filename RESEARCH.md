@@ -1676,3 +1676,250 @@ EmailDocument
 OKF
 
 And the nice thing is that you're now seeing why each part exists, rather than treating the Gmail Python SDK as a black box.
+
+---
+
+In Gmail, **Message ID** and **Thread ID** identify two different levels of an email conversation.
+
+### Simple example
+
+Suppose you send:
+
+> **You:** Hi, can we discuss Project X?
+
+Then your colleague replies:
+
+> **Alice:** Sure, let's discuss it tomorrow.
+
+Then you reply:
+
+> **You:** Perfect.
+
+Gmail represents this roughly as:
+
+```text
+Thread ID: T123
+│
+├── Message ID: M001
+│   └── "Hi, can we discuss Project X?"
+│
+├── Message ID: M002
+│   └── "Sure, let's discuss it tomorrow."
+│
+└── Message ID: M003
+    └── "Perfect."
+```
+
+So:
+
+- **Message ID** → identifies **one specific email**
+- **Thread ID** → identifies the **entire conversation**
+
+Google's `messages.list` response gives both `id` and `threadId`; the `id` identifies the individual message, while the `threadId` associates messages belonging to the same conversation.
+
+---
+
+## 1. Message ID
+
+A Gmail message has its own unique ID:
+
+```json
+{
+  "id": "18f2abc123",
+  "threadId": "18f2abc000"
+}
+```
+
+The `id` refers to **that particular email**.
+
+For example:
+
+```text
+M001 → Original email
+M002 → Reply
+M003 → Reply to reply
+```
+
+Each one has a different message ID.
+
+You use the message ID when you want to retrieve a specific email:
+
+```python
+service.users().messages().get(
+    userId="me",
+    id="18f2abc123"
+).execute()
+```
+
+---
+
+## 2. Thread ID
+
+The `threadId` groups related messages into a conversation.
+
+For example:
+
+```text
+Thread T123
+│
+├── M001
+├── M002
+├── M003
+└── M004
+```
+
+All these messages can have:
+
+```text
+threadId = T123
+```
+
+while their:
+
+```text
+messageId
+```
+
+is different.
+
+You can therefore think:
+
+```text
+Thread = conversation
+Message = individual email
+```
+
+---
+
+## 3. Why does Gmail need both?
+
+Because these are different things.
+
+Imagine you ask:
+
+> "What did Alice say in the Project X conversation?"
+
+You care about the **thread**.
+
+But if you ask:
+
+> "What exactly did Alice's second reply say?"
+
+You care about the **specific message**.
+
+So:
+
+```text
+                    Thread
+                      │
+          ┌───────────┼───────────┐
+          ▼           ▼           ▼
+       Message     Message      Message
+         M1           M2           M3
+```
+
+---
+
+## 4. How this matters for our Enterprise Knowledge Agent
+
+This is actually quite important for our data model.
+
+I would store both:
+
+```json
+{
+  "message_id": "M002",
+  "thread_id": "T123",
+  "subject": "Project X",
+  "sender": "alice@example.com",
+  "body": "Sure, let's discuss it tomorrow."
+}
+```
+
+Then our knowledge graph could represent:
+
+```text
+Alice
+  │
+  │ sent
+  ▼
+Message M002
+  │
+  │ belongs_to
+  ▼
+Thread T123
+  │
+  ├── Message M001
+  ├── Message M002
+  └── Message M003
+```
+
+This gives us useful retrieval possibilities.
+
+### Message-level retrieval
+
+> "What did Alice say?"
+
+```text
+Alice
+ ↓
+Messages
+ ↓
+M002
+```
+
+### Conversation-level retrieval
+
+> "What was discussed about Project X?"
+
+```text
+Project X
+ ↓
+Thread T123
+ ↓
+M001 → M002 → M003
+```
+
+That's especially useful for your **Graph RAG** design.
+
+---
+
+## 5. One subtle point
+
+A **thread isn't itself an email**.
+
+It's a Gmail organizational concept that groups related messages.
+
+So don't model it as:
+
+```text
+Thread = one email
+```
+
+Instead:
+
+```text
+Thread
+   │
+   ├── Email
+   ├── Email
+   ├── Email
+   └── Email
+```
+
+For our connector, I'd therefore have:
+
+```python
+class EmailDocument:
+    message_id: str
+    thread_id: str
+    ...
+```
+
+rather than only storing one ID.
+
+### In one sentence
+
+**Message ID identifies one email; Thread ID identifies the conversation to which that email belongs.**
+
+For our connector, **we should store both**, because message-level retrieval and conversation-level/Graph RAG retrieval will need different granularities.
