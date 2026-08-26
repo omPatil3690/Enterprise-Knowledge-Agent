@@ -267,12 +267,13 @@ class OKFConcept:
         updated_at = doc.metadata.last_edited_time or now_iso
 
         # Build Provenance Source entry
-        source_id = f"notion-{doc.metadata.id[:8]}" if doc.metadata.id else "notion-source"
+        platform = doc.metadata.source_platform or "unknown"
+        source_id = f"{platform}-{doc.metadata.id[:8]}" if doc.metadata.id else f"{platform}-source"
         source_entry = OKFSource(
             id=source_id,
-            resource=doc.metadata.url or f"notion://pages/{doc.metadata.id}",
-            title=f"Notion: {doc.metadata.title}",
-            author=f"process:{doc.metadata.source_platform}",
+            resource=doc.metadata.url or f"{platform}://resources/{doc.metadata.id}",
+            title=f"{platform.capitalize()}: {doc.metadata.title}",
+            author=f"process:{platform}",
             last_modified=updated_at,
         )
 
@@ -288,7 +289,7 @@ class OKFConcept:
                     first_line = first_line[1:-1].strip()
                 auto_desc = first_line[:120] + ("..." if len(first_line) > 120 else "")
             else:
-                auto_desc = f"{doc.metadata.title} knowledge document from Notion."
+                auto_desc = f"{doc.metadata.title} knowledge document from {platform.capitalize()}."
 
         # Collect structured tabular data (charts/databases)
         structured_data = []
@@ -311,12 +312,12 @@ class OKFConcept:
             type=concept_type,
             title=doc.metadata.title or "Untitled",
             description=auto_desc,
-            resource=doc.metadata.url or f"notion://pages/{doc.metadata.id}",
+            resource=doc.metadata.url or f"{platform}://resources/{doc.metadata.id}",
             tags=inferred_tags,
             created_at=created_at,
             updated_at=updated_at,
             generated=OKFActor(by=author, at=updated_at),
-            verified=[OKFActor(by="process:notion-sync", at=now_iso)],
+            verified=[OKFActor(by=f"process:{platform}-sync", at=now_iso)],
             status="stable",
             sources=[source_entry],
             permissions=permissions or OKFPermissions(),

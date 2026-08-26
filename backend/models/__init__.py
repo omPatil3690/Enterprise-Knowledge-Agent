@@ -4,6 +4,7 @@ Models package for Enterprise Knowledge Agent.
 
 from .document import Document, DocumentMetadata, ContentBlock, BlockType
 from .okf import OKFConcept, OKFBundle, OKFSource, OKFActor, OKFPermissions
+from .email import EmailDocument, EmailAttachment
 
 __all__ = [
     "Document",
@@ -15,4 +16,6 @@ __all__ = [
     "OKFSource",
     "OKFActor",
     "OKFPermissions",
+    "EmailDocument",
+    "EmailAttachment",
 ]

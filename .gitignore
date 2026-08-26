@@ -2,10 +2,18 @@
 .env
 .env.*
 !.env.example
+
+# Credentials, OAuth Tokens & Secrets
+credentials.json
+**/credentials.json
+token.json
+**/token.json
+*.token.json
+client_secret*.json
+service_account*.json
+
 # Python
 __pycache__/
-*.pyc
-test_data
 *.py[cod]
 *$py.class
 *.so
