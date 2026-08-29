@@ -19,6 +19,7 @@ from backend.connectors.github.parser import (
     normalize_repo_document,
 )
 from backend.models.document import BlockType, ContentBlock, Document, DocumentMetadata
+from backend.models.github import GitHubIssue, GitHubRepository
 
 
 def dict_to_content_block(data: Dict[str, Any], parent_id: Optional[str] = None) -> ContentBlock:
@@ -142,8 +143,27 @@ class GitHubConnector(BaseConnector):
             if self.fetch_issues:
                 issues = self.client.list_issues(owner, repo_name, state="open")
 
-            normalized = normalize_repo_document(repo, readme_content=readme_content, issues=issues)
-            return dict_to_document(normalized)
+            # Canonical model path: GitHubRepository -> to_intermediate_document()
+            repository = GitHubRepository.from_api(repo)
+            repository.readme_content = readme_content
+            if issues:
+                repository.issues = [
+                    GitHubIssue(
+                        number=issue.get("number", 0),
+                        title=issue.get("title") or "Untitled",
+                        state=issue.get("state", "open"),
+                        is_pull_request="pull_request" in issue,
+                        body=issue.get("body"),
+                        author=(issue.get("user") or {}).get("login"),
+                        labels=[l.get("name") for l in issue.get("labels", []) if l.get("name")],
+                        comments=issue.get("comments", 0),
+                        created_at=issue.get("created_at"),
+                        updated_at=issue.get("updated_at"),
+                        html_url=issue.get("html_url"),
+                    )
+                    for issue in issues
+                ]
+            return repository.to_intermediate_document()
         except Exception as e:
             print(f"⚠️ Error loading GitHub repository {full_name}: {e}")
             return None

@@ -20,6 +20,7 @@ from backend.connectors.dropbox.parser import (
     normalize_folder_document,
 )
 from backend.models.document import BlockType, ContentBlock, Document, DocumentMetadata
+from backend.models.dropbox import DropboxFile, DropboxFolder
 
 
 def dict_to_content_block(data: Dict[str, Any], parent_id: Optional[str] = None) -> ContentBlock:
@@ -135,8 +136,8 @@ class DropboxConnector(BaseConnector):
 
             if meta.get(".tag") == "folder":
                 children = self.client.list_folder(path=doc_id, recursive=False)
-                normalized = normalize_folder_document(meta, children=children)
-                return dict_to_document(normalized)
+                folder = DropboxFolder.from_api(meta, children=children)
+                return folder.to_intermediate_document()
 
             # File
             if not is_text_file((meta.get("path_lower") or doc_id)):
@@ -144,8 +145,8 @@ class DropboxConnector(BaseConnector):
                 return None
             downloaded = self.client.download_file(doc_id)
             content = (downloaded or {}).get("content")
-            normalized = normalize_file_document(meta, content=content)
-            return dict_to_document(normalized)
+            file_doc = DropboxFile.from_api(meta, content=content)
+            return file_doc.to_intermediate_document()
         except Exception as e:
             print(f"⚠️ Error loading Dropbox resource {doc_id}: {e}")
             return None
@@ -189,8 +190,8 @@ class DropboxConnector(BaseConnector):
                 continue
             try:
                 content = (self.client.download_file(path) or {}).get("content")
-                normalized = normalize_file_document(entry, content=content)
-                documents.append(dict_to_document(normalized))
+                file_doc = DropboxFile.from_api(entry, content=content)
+                documents.append(file_doc.to_intermediate_document())
                 downloaded += 1
             except Exception as e:
                 print(f"⚠️ Error downloading {path}: {e}")
@@ -204,8 +205,8 @@ class DropboxConnector(BaseConnector):
         try:
             path = entry.get("path_lower") or entry.get("path_display") or ""
             children = self.client.list_folder(path=path, recursive=False)
-            normalized = normalize_folder_document(entry, children=children)
-            return dict_to_document(normalized)
+            folder = DropboxFolder.from_api(entry, children=children)
+            return folder.to_intermediate_document()
         except Exception as e:
             print(f"⚠️ Error building folder document: {e}")
             return None

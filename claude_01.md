@@ -208,6 +208,27 @@ This document continues the chronological record maintained in [`claude.md`](cla
 
 ---
 
+## Step 44: Canonical GitHub & Dropbox Domain Models (`backend/models/github.py`, `backend/models/dropbox.py`)
+- **Date:** 2026-08-30
+- **Purpose:** Add dedicated, provider-independent domain models for the GitHub and Dropbox connectors in `backend/models/`, mirroring the canonical `EmailDocument`/`EmailAttachment` pattern. Previously these connectors built typed `Document` objects directly from normalized dicts without a domain model layer.
+
+### Key Decisions & Rationale:
+1. **Canonical Models with `to_intermediate_document()`**:
+   - `backend/models/github.py`: `GitHubRepository` (+ `from_api()` factory), `GitHubIssue`, `GitHubFile`. `GitHubRepository.to_intermediate_document()` renders repo metadata as a `CALLOUT`, README as paragraphs, issues as heading+paragraph trees, and repo metrics as a structured `DATABASE` block (drives OKF `structured_data` extraction).
+   - `backend/models/dropbox.py`: `DropboxFile`, `DropboxFolder`, `DropboxEntry` (with `as_table_row()`). File models render heading `File:`/content paragraphs; folder models render heading `Folder:`/summary plus a structured `DATABASE` "Folder Contents" table.
+2. **Single Source of Truth**: The connectors now build canonical models via `from_api()` factories and call `to_intermediate_document()`, instead of emitting raw dicts — the same pattern Email/Gmail uses.
+3. **Centralized Exports**: Exported `GitHubRepository`, `GitHubIssue`, `GitHubFile`, `DropboxFile`, `DropboxFolder`, `DropboxEntry` from `backend/models/__init__.py`.
+4. **Verified**: Offline sanity confirms both models produce correctly structured, markdown-renderable `Document` objects (repo metrics table, folder contents table) and all connectors import cleanly.
+
+### Files Created / Modified:
+- [`backend/models/github.py`](backend/models/github.py) (Created)
+- [`backend/models/dropbox.py`](backend/models/dropbox.py) (Created)
+- [`backend/models/__init__.py`](backend/models/__init__.py) (Updated exports)
+- [`backend/connectors/github/connector.py`](backend/connectors/github/connector.py) (Use `GitHubRepository.to_intermediate_document()`)
+- [`backend/connectors/dropbox/connector.py`](backend/connectors/dropbox/connector.py) (Use `DropboxFile`/`DropboxFolder.to_intermediate_document()`)
+
+---
+
 ## Blocked / Pending
 - **Dropbox Live Run**: Cannot execute the live Dropbox runner without a real `DROPBOX_TOKEN`. The user must supply a Dropbox access token (https://www.dropbox.com/developers/apps → create app → generate access token) and set `DROPBOX_TOKEN` in `.env`, then run:
   ```bash
