@@ -1923,3 +1923,323 @@ rather than only storing one ID.
 **Message ID identifies one email; Thread ID identifies the conversation to which that email belongs.**
 
 For our connector, **we should store both**, because message-level retrieval and conversation-level/Graph RAG retrieval will need different granularities.
+
+---
+
+# GitHub Connector: From Repositories to Knowledge
+
+This section captures the research and design decisions behind the **GitHub Connector**.
+
+## What is a GitHub repository as a knowledge source?
+
+A GitHub repository is not just:
+
+```text
+Repo
+└── code: "some large codebase"
+```
+
+It has several distinct knowledge-bearing surfaces:
+
+```text
+Repository
+│
+├── Repository metadata
+│   ├── name / full_name (owner/repo)
+│   ├── description
+│   ├── language
+│   ├── license
+│   ├── stars / forks / watchers
+│   ├── open issue count
+│   └── default branch
+│
+├── README           ← the primary human-readable documentation
+├── Source files     ← the code itself (tree / file contents)
+└── Issues / PRs     ← discussions, decisions, and history
+```
+
+For an Enterprise Knowledge Agent, the highest-signal, most retrievable surfaces are:
+
+- **README** → documentation of intent, usage, architecture.
+- **Repository metadata** → factual attributes (licensing, language, maintainership).
+- **Issues / PRs** → why/what decisions were made, task tracking.
+
+## GitHub API model: discovery vs. retrieval
+
+Like Gmail, GitHub deliberately separates **discovery** from **retrieval**:
+
+```text
+GET /user/repos                 → a list of repos (metadata summary only)
+    ↓
+GET /repos/{owner}/{repo}       → full repo metadata
+GET /repos/{owner}/{repo}/readme → base64 README
+GET /repos/{owner}/{repo}/issues → issues / PRs
+GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1 → file tree
+```
+
+Key points:
+
+1. **Base URL**: `https://api.github.com` — the REST v3 API.
+2. **Versioning header**: GitHub uses `X-GitHub-Api-Version: 2022-11-28` (an explicit API-version header rather than a `/vN/` path prefix). This is the same API-versioning idea we saw with Gmail's `/v1/` and Microsoft Graph's `/v1.0/`.
+3. **Auth**: `Authorization: Bearer <token>`. A fine-grained PAT (Personal Access Token) with read-only `Contents`, `Metadata`, and `Issues` scopes is the least-privilege choice for a retrieval system.
+4. **Pagination**: list endpoints return a `Link` header (`rel="next"`) rather than a `nextPageToken`. Client code must parse that header to page through all items.
+
+## What to extract and preserve
+
+Following the same principle as Notion — "don't throw away information too aggressively" — we keep:
+
+```json
+{
+  "repo_id": "owner/repo",
+  "title": "repo name",
+  "url": "https://github.com/owner/repo",
+  "description": "...",
+  "language": "Python",
+  "default_branch": "main",
+  "stars": 10,
+  "forks": 3,
+  "license": "MIT",
+  "created_at": "...",
+  "updated_at": "...",
+  "readme": "# ...",
+  "issues": [ { "number": 1, "title": "...", "state": "open", "labels": [...] } ]
+}
+```
+
+The normalized Document persists:
+
+`repo_id` → stable source identifier
+`url` → source citation
+`updated_at` → synchronization later (last push / last issue update)
+`readme` → primary knowledge body
+
+## GitHub connector processing layers
+
+```text
+GitHub REST API JSON
+        ↓
+Repositories / README / Issues
+        ↓
+Fetch (client.py) selects surfaces by flags (fetch_readme, fetch_issues)
+        ↓
+Normalize (parser.py) → Document (typed Document/ContentBlock)
+        ↓
+OKF
+```
+
+The three-layer idea from Notion applies verbatim:
+
+### 1. Repository-level information
+Keep metadata: `full_name`, `url`, `description`, `language`, `license`, `default_branch`, stars/forks/issues, `updated_at`.
+
+### 2. Content-level information (README + issues)
+Convert README markdown into semantic blocks (headings, code fences, paragraphs). Convert each issue into metadata + numbered list entries (title, state, author, labels, body).
+
+### 3. Preserve source information
+Every block still knows it came from `github://owner/repo` (and, for issues, which issue number).
+
+## Why separate fetch from normalization (again)
+
+The same reason as Notion and Gmail:
+
+```text
+discover repos → fetch repo + readme + issues
+        ↓
+complete repo data
+        ↓
+normalize()
+        ↓
+our Document model
+```
+
+`normalize()` can assume the fetch layer already attempted to retrieve the complete repo surface, so it never has to know about pagination or Link-header parsing.
+
+## Architecture overview
+
+```text
+GitHub Account
+        │
+        ▼
+Discover accessible repos
+        │
+        ├── Repo A ── README + issues
+        ├── Repo B ── README + issues
+        └── Repo C ── README + issues
+              │
+              ▼
+Normalize each
+        │
+        ▼
+Knowledge Store (Document → OKF)
+```
+
+## Retrieval granularity
+
+We want both repository-level and issue-level retrieval:
+
+> "What does this project do?" → README + repo metadata
+
+> "What issue mentioned X?" → specific issue
+
+So we store the README as one document (with repo metadata in blocks) and represent issues structurally so they remain individually addressable.
+
+### In one sentence
+
+**A GitHub repo becomes a knowledge document that joins repository metadata, README documentation, and issue discussions — preserving ownership, licensing, and history for retrieval and Graph RAG.**
+
+---
+
+# Dropbox Connector: From Filesystem to Knowledge
+
+This section captures the research and design decisions behind the **Dropbox Connector**.
+
+## What is Dropbox as a knowledge source?
+
+Dropbox is a cloud filesystem. Its content is organized as:
+
+```text
+Account
+│
+└── Root "/"
+    ├── folder/
+    │   ├── notes.md
+    │   └── report.pdf
+    └── readme.txt
+```
+
+So the natural knowledge granularity is **file** (for text documents) and **folder** (as a hierarchical container / index).
+
+For an Enterprise Knowledge Agent, the valuable surface is:
+
+- **Text files** → notes, markdown docs, plain text, code files.
+- **Folders** → a structured index of what lives where (like a Notion database of contents).
+
+## Dropbox API model: metadata vs. content
+
+Dropbox splits its API into two hosts:
+
+```text
+https://api.dropboxapi.com/2       → JSON metadata endpoints (list, metadata, account)
+https://content.dropboxapi.com/2   → file download endpoint
+```
+
+Key endpoints:
+
+```text
+POST /2/users/get_current_account  → account info (display name, email)
+POST /2/files/list_folder          → entries in a folder (cursor-paginated, recursive option)
+POST /2/files/get_metadata         → single file/folder metadata
+POST /2/files/download             → file bytes (content host)
+```
+
+Key points:
+
+1. **Auth**: `Authorization: Bearer <token>` — a Dropbox access token (from https://www.dropbox.com/developers/apps).
+2. **Discovery vs. retrieval**: `list_folder` returns *metadata only* (name, path, size, modified). To get *content* you must call `download` for each text file. This mirrors Gmail's `list` (IDs) → `get` (payload) split.
+3. **Recursive listing**: `list_folder` accepts `recursive: true`, so we can walk the whole account tree in one call rather than recursing manually.
+4. **Cursor pagination**: `list_folder` returns `has_more` + `cursor`; pass the cursor to `list_folder/continue` until `has_more` is false — exactly the Notion `next_cursor` pattern.
+5. **`Dropbox-API-Result` header**: on content downloads, file metadata is returned in an HTTP *header* (JSON) while the body is the raw file bytes — the client must parse both.
+
+## What to extract and preserve
+
+```text
+File
+├── path_lower (e.g. /docs/notes.md)
+├── name
+├── size (bytes)
+├── server_modified (last edited)
+├── client_modified
+└── content (downloaded text, if text file)
+
+Folder
+├── path_lower
+├── name
+└── child entries: [{name, path, size, modified}]
+```
+
+The normalized Document persists:
+
+`path` → stable source identifier (like page_id)
+`server_modified` → synchronization / recency
+`content` → the knowledge body (for text files)
+`child entries` → structured folder index table
+
+## Text vs. binary filtering
+
+Not every file is retrievable knowledge:
+
+```text
+notes.md        → text  ✅ extract
+report.pdf      → binary (PDF) → currently skipped (future OCR/multimodal extractor)
+image.png       → binary → skipped
+some.locked.tmp → ignored name → skipped
+```
+
+So the parser defines extension allow/block lists (`PREFERRED_TEXT_EXTENSIONS`, `IGNORED_TEXT_EXTENSIONS`) and ignored file names (`IGNORED_FILE_NAMES`). This keeps the pipeline free of low-signal binary noise — the same principle as Notion's `IGNORED_BLOCK_TYPES`.
+
+## Dropbox connector processing layers
+
+```text
+Dropbox API JSON + file bytes
+        ↓
+List folders (recursive) + download text files
+        ↓
+Fetch (client.py): list_folder, get_metadata, download
+        ↓
+Normalize (parser.py) → File Document / Folder Document
+        ↓
+OKF
+```
+
+The three-layer idea, applied:
+
+### 1. File-level information
+Keep `path`, `name`, `size`, `server_modified`, `client_modified`.
+
+### 2. Content-level information
+For text files, the downloaded content becomes `PARAGRAPH` / heading blocks (markdown preserved). For folders, a structured `database` block ("Folder Contents") lists every contained file/subfolder (Name, Path, Size, Modified) — like a Notion table.
+
+### 3. Preserve source information
+Every block knows it came from `dropbox://{path}` so citations and updates stay traceable.
+
+## Why separate fetch from normalization (again)
+
+```text
+list folders → fetch metadata → download text files
+        ↓
+complete tree + content
+        ↓
+normalize()
+        ↓
+our Document model
+```
+
+The fetch layer walks the tree once; `normalize()` converts each file/folder dict into a typed Document. The connector orchestrates both while honoring `root_path`, `include_folders`, `include_files`, and `max_files` (to bound download volume).
+
+## Architecture overview
+
+```text
+Dropbox Account
+        │
+        ▼
+Root path (recursive folder listing)
+        │
+        ├── Folder → Folder Document (structured contents table)
+        ├── notes.md → File Document (content blocks)
+        ├── report.pdf → skipped (binary)
+        └── image.png → skipped (binary)
+              │
+              ▼
+Normalize each
+        │
+        ▼
+Knowledge Store (Document → OKF)
+```
+
+## Sync consideration
+
+`server_modified` gives us the delta signal for incremental synchronization (re-process a file only when `server_modified > last_synced`). This mirrors the `last_edited_time`-based sync in Notion/GitHub.
+
+### In one sentence
+
+**Dropbox becomes a hierarchical knowledge source where folders act as structured indexes and text files act as documents — while binary files are filtered out to keep the pipeline clean.**

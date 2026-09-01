@@ -15,6 +15,7 @@
 6. Overall Architecture
 7. Knowledge Ingestion Pipeline
 8. Query Processing Pipeline
+8.1 .knowledge ingestion pipeline + query processing pipeline
 9. Hybrid Graph RAG
 10. Knowledge Graph Construction
 11. Open Knowledge Format (OKF)
@@ -240,6 +241,75 @@ Grounded Response
 ```
 
 ---
+#8.1. Complete Pipeline 
+                 ┌──────────────────────┐
+                 │      DATA SOURCES     │
+                 │                      │
+                 │ GitHub                │
+                 │ Drive                 │
+                 │ Jira                  │
+                 │ Slack                 │
+                 │ Confluence            │
+                 └──────────┬───────────┘
+                            │
+                            ↓
+                    ┌──────────────┐
+                    │  CONNECTORS  │
+                    └──────┬───────┘
+                           │
+                           ↓
+                    ┌──────────────┐
+                    │     OKF      │
+                    │ Normalization│
+                    └──────┬───────┘
+                           │
+                ┌──────────┼──────────┐
+                ↓          ↓          ↓
+           Chunking     Entities   Permissions
+                │          │          │
+                ↓          ↓          ↓
+           Embeddings   Relations    ACL Store
+                │          │
+                ↓          ↓
+           Vector DB     Neo4j
+                │
+                ↓
+          Keyword Index
+                │
+                │
+════════════════╪══════════════════════════
+                │
+           USER QUERY
+                │
+                ↓
+        ┌───────────────┐
+        │ API / AUTH    │
+        └───────┬───────┘
+                ↓
+        ┌───────────────┐
+        │ AGENT/PLANNER │
+        └───────┬───────┘
+                │
+        Decide required tools
+                │
+       ┌────────┼─────────┐
+       ↓        ↓         ↓
+    Vector   Keyword    Graph
+    Search    Search     Search
+       │        │         │
+       └────────┼─────────┘
+                ↓
+        Permission Filtering
+                ↓
+          Result Fusion
+                ↓
+             Rerank
+                ↓
+         Context Assembly
+                ↓
+             LLM
+                ↓
+       Answer + Citations
 
 # 9. Hybrid Graph RAG
 
