@@ -2030,12 +2030,15 @@ OKF
 The three-layer idea from Notion applies verbatim:
 
 ### 1. Repository-level information
+
 Keep metadata: `full_name`, `url`, `description`, `language`, `license`, `default_branch`, stars/forks/issues, `updated_at`.
 
 ### 2. Content-level information (README + issues)
+
 Convert README markdown into semantic blocks (headings, code fences, paragraphs). Convert each issue into metadata + numbered list entries (title, state, author, labels, body).
 
 ### 3. Preserve source information
+
 Every block still knows it came from `github://owner/repo` (and, for issues, which issue number).
 
 ## Why separate fetch from normalization (again)
@@ -2135,10 +2138,10 @@ POST /2/files/download             → file bytes (content host)
 Key points:
 
 1. **Auth**: `Authorization: Bearer <token>` — a Dropbox access token (from https://www.dropbox.com/developers/apps).
-2. **Discovery vs. retrieval**: `list_folder` returns *metadata only* (name, path, size, modified). To get *content* you must call `download` for each text file. This mirrors Gmail's `list` (IDs) → `get` (payload) split.
+2. **Discovery vs. retrieval**: `list_folder` returns _metadata only_ (name, path, size, modified). To get _content_ you must call `download` for each text file. This mirrors Gmail's `list` (IDs) → `get` (payload) split.
 3. **Recursive listing**: `list_folder` accepts `recursive: true`, so we can walk the whole account tree in one call rather than recursing manually.
 4. **Cursor pagination**: `list_folder` returns `has_more` + `cursor`; pass the cursor to `list_folder/continue` until `has_more` is false — exactly the Notion `next_cursor` pattern.
-5. **`Dropbox-API-Result` header**: on content downloads, file metadata is returned in an HTTP *header* (JSON) while the body is the raw file bytes — the client must parse both.
+5. **`Dropbox-API-Result` header**: on content downloads, file metadata is returned in an HTTP _header_ (JSON) while the body is the raw file bytes — the client must parse both.
 
 ## What to extract and preserve
 
@@ -2194,12 +2197,15 @@ OKF
 The three-layer idea, applied:
 
 ### 1. File-level information
+
 Keep `path`, `name`, `size`, `server_modified`, `client_modified`.
 
 ### 2. Content-level information
+
 For text files, the downloaded content becomes `PARAGRAPH` / heading blocks (markdown preserved). For folders, a structured `database` block ("Folder Contents") lists every contained file/subfolder (Name, Path, Size, Modified) — like a Notion table.
 
 ### 3. Preserve source information
+
 Every block knows it came from `dropbox://{path}` so citations and updates stay traceable.
 
 ## Why separate fetch from normalization (again)
@@ -2243,3 +2249,42 @@ Knowledge Store (Document → OKF)
 ### In one sentence
 
 **Dropbox becomes a hierarchical knowledge source where folders act as structured indexes and text files act as documents — while binary files are filtered out to keep the pipeline clean.**
+
+---
+
+8. Why offline matters
+
+This is particularly important for your connector.
+
+You don't want the user to log into Dropbox every time your ingestion pipeline runs.
+
+For example:
+
+Monday
+↓
+Sync Dropbox
+
+Tuesday
+↓
+Sync Dropbox
+
+Wednesday
+↓
+New Dropbox file
+↓
+Sync automatically
+
+Therefore you want a refresh token.
+
+Dropbox supports short-lived access tokens together with refresh tokens for offline access.
+
+So your final credentials are conceptually:
+
+App Key
+
+- App Secret
+- Refresh Token
+
+Your backend can then obtain/refresh short-lived access tokens when needed.
+
+The current Dropbox JavaScript SDK also explicitly supports access tokens, refresh tokens, client IDs, and client secrets.

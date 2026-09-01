@@ -44,6 +44,7 @@ The project connects to multiple enterprise data sources and converts their data
    Confluence ───┤
    Google Drive ─┤
    Gmail ────────┤
+   Dropbox ──────┤
    Slack ────────┘
           │
           ▼
@@ -59,12 +60,12 @@ The project connects to multiple enterprise data sources and converts their data
 
 The external services fall into four categories:
 
-| Category           | Services                                              | Purpose                                   |
-| ------------------ | ----------------------------------------------------- | ----------------------------------------- |
-| **Data Sources**   | Notion, GitHub, Jira, Confluence, Drive, Gmail, Slack | Provide enterprise information            |
-| **AI**             | Gemini, OpenAI, Anthropic                             | Reasoning, planning and answer generation |
-| **Storage**        | Qdrant, ChromaDB, Neo4j                               | Store/search knowledge                    |
-| **Authentication** | OAuth, API Keys, Access Tokens                        | Allow the agent to access services        |
+| Category           | Services                                                       | Purpose                                   |
+| ------------------ | -------------------------------------------------------------- | ----------------------------------------- |
+| **Data Sources**   | Notion, GitHub, Jira, Confluence, Drive, Gmail, Dropbox, Slack | Provide enterprise information            |
+| **AI**             | Gemini, OpenAI, Anthropic                                      | Reasoning, planning and answer generation |
+| **Storage**        | Qdrant, ChromaDB, Neo4j                                        | Store/search knowledge                    |
+| **Authentication** | OAuth, API Keys, Access Tokens                                 | Allow the agent to access services        |
 
 ---
 
@@ -532,7 +533,66 @@ is preferable to unnecessarily broad permissions.
 
 ---
 
-# 10. 💬 Slack Connector
+# 10. 📦 Dropbox Connector
+
+## What is it?
+
+Dropbox provides enterprise file and folder storage.
+
+The agent can retrieve:
+
+* Folders and directory hierarchies
+* Code and plaintext files (.md, .py, .txt, .json, .yaml, .csv)
+* Structured metadata and revision timestamps
+
+Architecture:
+
+```text
+Dropbox
+   │
+   ▼
+Dropbox API / SDK
+   │
+   ▼
+Dropbox Connector
+   │
+   ▼
+OKF
+   │
+   ├──► Vector Search
+   └──► Knowledge Graph
+```
+
+### Authentication & Credentials
+
+The connector supports permanent OAuth 2.0 with automatic background refresh:
+
+```env
+DROPBOX_APP_KEY=your_app_key
+DROPBOX_APP_SECRET=your_app_secret
+DROPBOX_REFRESH_TOKEN=your_refresh_token
+```
+
+Or a short-lived developer token:
+
+```env
+DROPBOX_ACCESS_TOKEN=sl.u.your_access_token
+```
+
+### Dropbox Developer Console
+
+https://www.dropbox.com/developers/apps
+
+### Required Permissions
+
+Under the **Permissions** tab, enable:
+* `files.metadata.read`
+* `files.content.read`
+* `account_info.read`
+
+---
+
+# 11. 💬 Slack Connector
 
 ## What is it?
 
@@ -801,6 +861,11 @@ NEO4J_PASSWORD=your_password
 
 GITHUB_TOKEN=
 
+DROPBOX_APP_KEY=
+DROPBOX_APP_SECRET=
+DROPBOX_REFRESH_TOKEN=
+DROPBOX_ACCESS_TOKEN=
+
 JIRA_URL=
 JIRA_USERNAME=
 JIRA_API_TOKEN=
@@ -978,6 +1043,7 @@ Finally add:
 ```text
 Google Drive
 Gmail
+Dropbox
 Slack
 Confluence
 ```
@@ -1030,6 +1096,7 @@ DATA SOURCES
  Confluence ────┤
  Google Drive ──┤
  Gmail ─────────┤
+ Dropbox ───────┤
  Slack ─────────┘
         │
         ▼

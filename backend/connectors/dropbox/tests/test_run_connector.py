@@ -3,7 +3,7 @@ End-to-End Test Runner for Dropbox Connector.
 
 Validates:
 1. BaseConnector interface conformance
-2. Token connection testing (test_connection)
+2. Token/OAuth connection testing (test_connection)
 3. Folder/file listing and text-file ingestion into Document format
 4. Markdown rendering of Dropbox documents
 """
@@ -16,9 +16,14 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 
 # Ensure project root is in sys.path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPT_PATH = Path(__file__).resolve()
+current = SCRIPT_PATH.parent
+while current != current.parent:
+    if (current / "backend").exists():
+        if str(current) not in sys.path:
+            sys.path.insert(0, str(current))
+        break
+    current = current.parent
 
 # Ensure .env is loaded
 load_dotenv(find_dotenv())
@@ -26,34 +31,27 @@ load_dotenv(find_dotenv())
 from backend.connectors.dropbox.connector import DropboxConnector
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-TEST_DATA_DIR = SCRIPT_DIR.parent / "test_data"
+DROPBOX_DIR = SCRIPT_DIR.parent
+TEST_DATA_DIR = DROPBOX_DIR / "test_data"
 TEST_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def run_test(path: str = "", no_folders: bool = False, no_files: bool = False, max_files: int = 200) -> None:
-    token = os.getenv("DROPBOX_TOKEN")
-
     print("\n" + "=" * 60)
     print("🚀 ENTERPRISE KNOWLEDGE AGENT - DROPBOX CONNECTOR RUNNER")
     print("=" * 60)
 
-    if not token:
-        print("❌ ERROR: DROPBOX_TOKEN is not set in your .env file.")
+    # 1. Initialize Connector (picks up credentials from .env)
+    try:
+        connector = DropboxConnector(
+            root_path=path,
+            include_folders=not no_folders,
+            include_files=not no_files,
+            max_files=max_files,
+        )
+    except Exception as e:
+        print(f"❌ Configuration error: {e}")
         return
-
-    print(f"🔑 Token: {token[:8]}... (detected)")
-    print(f"📂 Root Path: {path or '/'}")
-    print(f"📁 Include Folders: {not no_folders} | 📄 Include Files: {not no_files}")
-    print("-" * 60)
-
-    # 1. Initialize Connector
-    connector = DropboxConnector(
-        token=token,
-        root_path=path,
-        include_folders=not no_folders,
-        include_files=not no_files,
-        max_files=max_files,
-    )
 
     # 2. Test Connection
     print("📡 Testing API Connection to Dropbox...")
@@ -61,10 +59,9 @@ def run_test(path: str = "", no_folders: bool = False, no_files: bool = False, m
         print("✅ Connection Successful! (Authenticated with Dropbox API)")
         account = connector.client.get_current_account()
         if account:
-            name = account.get("name", {})
-            print(f"   Account: {name.get('display_name')} ({account.get('email')})")
+            print(f"   Account: {account.get('display_name')} ({account.get('email')})")
     else:
-        print("❌ Connection Failed. Please check your DROPBOX_TOKEN in .env.")
+        print("❌ Connection Failed. Please check your credentials in .env.")
         return
 
     print("-" * 60)
@@ -88,8 +85,6 @@ def run_test(path: str = "", no_folders: bool = False, no_files: bool = False, m
         print(f"• URL:              {doc.metadata.url or 'N/A'}")
         print(f"• Created Time:     {doc.metadata.created_time or 'N/A'}")
         print(f"• Last Edited Time: {doc.metadata.last_edited_time or 'N/A'}")
-        print(f"• Created By:       {doc.metadata.created_by or 'N/A'}")
-        print(f"• Last Edited By:   {doc.metadata.last_edited_by or 'N/A'}")
         print(f"• Parent Type:      {doc.metadata.parent_type or 'N/A'}")
         print(f"• Parent ID:        {doc.metadata.parent_id or 'N/A'}")
         print(f"• Total Root Blocks:{len(doc.blocks)}")
@@ -107,34 +102,23 @@ def run_test(path: str = "", no_folders: bool = False, no_files: bool = False, m
         print(f"• Block Breakdown:  {types_count}")
 
         # Save JSON output
-        safe_name = doc.metadata.title.replace("/", "_").replace("\\", "_")
+        safe_name = doc.metadata.title.replace("/", "_").replace("\\", "_").strip("_") or "root"
         json_filename = f"output_document_{safe_name}.json"
         json_path = TEST_DATA_DIR / json_filename
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(doc.to_dict(), f, indent=2, ensure_ascii=False)
-        print(f"\n💾 Saved structured JSON to:   {json_path}")
+        print(f"\n💾 Saved structured JSON to:   {json_path.name}")
 
         # Save Markdown output
         md_filename = f"output_document_{safe_name}.md"
         md_path = TEST_DATA_DIR / md_filename
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(doc.to_markdown())
-        print(f"💾 Saved rendered Markdown to: {md_path}")
+        print(f"💾 Saved rendered Markdown to: {md_path.name}")
 
-        # Print Markdown Preview
-        print("\n" + "-" * 60)
-        print("📝 RENDERED MARKDOWN PREVIEW:")
-        print("-" * 60)
-        md_content = doc.to_markdown()
-        lines = md_content.splitlines()
-        preview_lines = lines[:20]
-        print("\n".join(preview_lines))
-        if len(lines) > 20:
-            print(f"\n... [{len(lines) - 20} more lines in {md_filename}] ...")
-
-        # Stop printing details after a few documents to avoid overwhelming the terminal
-        if idx >= 10:
-            print("\n... (stopped printing detailed previews; all documents saved to test_data/) ...")
+        # Stop printing details after 5 documents to avoid terminal flood
+        if idx >= 5:
+            print("\n... (all remaining documents saved to test_data/) ...")
             break
 
     print("\n" + "=" * 60)

@@ -33,7 +33,19 @@ This document consolidates all essential external links, API references, develop
 
 ---
 
-## 💼 3. Atlassian Connectors (Confluence & Jira)
+## 📦 3. Dropbox Connector
+
+| Resource | Purpose | Official URL |
+| :--- | :--- | :--- |
+| **Dropbox Developer App Console** | Create Dropbox Apps, manage permissions, and view App Key/Secret | [dropbox.com/developers/apps](https://www.dropbox.com/developers/apps) |
+| **Dropbox OAuth 2.0 Guide** | Documentation on short-lived tokens and `token_access_type=offline` | [developers.dropbox.com/oauth-guide](https://developers.dropbox.com/oauth-guide) |
+| **Dropbox Python SDK Docs** | Official Python SDK reference (`dropbox.Dropbox`, OAuth flows) | [dropbox-sdk-python.readthedocs.io](https://dropbox-sdk-python.readthedocs.io/) |
+| **Dropbox API HTTP Reference** | Endpoints for `/files/list_folder`, `/files/download`, `/users/get_current_account` | [dropbox.com/developers/documentation/http/documentation](https://www.dropbox.com/developers/documentation/http/documentation) |
+| **Dropbox API Explorer** | Interactive API testing tool for Dropbox endpoints | [dropbox.github.io/dropbox-api-v2-explorer](https://dropbox.github.io/dropbox-api-v2-explorer/) |
+
+---
+
+## 💼 4. Atlassian Connectors (Confluence & Jira)
 
 | Resource | Purpose | Official URL |
 | :--- | :--- | :--- |
@@ -44,7 +56,7 @@ This document consolidates all essential external links, API references, develop
 
 ---
 
-## 🐙 4. Code & Collaboration Connectors (GitHub, Slack, Google Drive)
+## 🐙 5. Code & Collaboration Connectors (GitHub, Slack, Google Drive)
 
 | Resource | Purpose | Official URL |
 | :--- | :--- | :--- |
@@ -56,7 +68,7 @@ This document consolidates all essential external links, API references, develop
 
 ---
 
-## 🤖 5. LLMs, Embedding Models & AI Providers
+## 🤖 6. LLMs, Embedding Models & AI Providers
 
 | Resource | Purpose | Official URL |
 | :--- | :--- | :--- |
@@ -68,7 +80,7 @@ This document consolidates all essential external links, API references, develop
 
 ---
 
-## 🗄️ 6. Vector & Graph Database Infrastructure
+## 🗄️ 7. Vector & Graph Database Infrastructure
 
 | Resource | Purpose | Official URL |
 | :--- | :--- | :--- |

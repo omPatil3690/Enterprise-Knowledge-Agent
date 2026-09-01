@@ -1,105 +1,97 @@
 """
-Dropbox API Client.
+Dropbox API Client using official Dropbox Python SDK.
 
-Handles all network I/O with the Dropbox HTTP API v2, including:
-- Credential validation and connection testing (/2/users/get_current_account)
-- Folder listing & recursive walk (/2/files/list_folder)
-- File metadata retrieval (/2/files/get_metadata)
-- File content download (/2/files/download)
-- Resilient error recovery for missing / inaccessible files
-- Rate-limit handling (HTTP 429 with Retry-After semantics)
+Handles all network I/O with Dropbox using dropbox.Dropbox:
+- Credential management (Access Token & OAuth 2.0 Refresh Token auto-refresh)
+- Account verification and connection testing (users_get_current_account)
+- Folder listing & recursive walk with cursor pagination (files_list_folder & files_list_folder_continue)
+- File metadata retrieval (files_get_metadata)
+- File content download (files_download)
+- Resilient error recovery and rate-limit handling (RateLimitError, AuthError)
 """
 
 import os
-import time
 from typing import Any, Dict, List, Optional
-import requests
+import dotenv
 
-# Dropbox API endpoints
-DROPBOX_API_BASE = "https://api.dropboxapi.com/2"
-DROPBOX_CONTENT_BASE = "https://content.dropboxapi.com/2"
+import dropbox
+from dropbox.exceptions import AuthError, BadInputError, RateLimitError
+from dropbox.files import FileMetadata, FolderMetadata
+
+dotenv.load_dotenv()
 
 
 class DropboxClient:
     """
-    Client for interacting with the Dropbox API v2.
-    Uses an OAuth 2.0 access token (DROPBOX_TOKEN) for authentication.
-    Implemented directly over Http/JSON (no third-party SDK required).
+    Client for interacting with Dropbox via the official Dropbox Python SDK.
+    Supports both short-lived access tokens and permanent OAuth 2.0 refresh tokens.
     """
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        app_key: Optional[str] = None,
+        app_secret: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+    ):
         """
         Initialize the Dropbox client.
-
-        Args:
-            token: Dropbox access token (defaults to DROPBOX_TOKEN env var).
+        
+        Prioritizes Refresh Token if available for automatic background token renewal.
         """
-        self.token = token or os.getenv("DROPBOX_TOKEN")
-        if not self.token:
+        self.app_key = app_key or os.getenv("DROPBOX_APP_KEY")
+        self.app_secret = app_secret or os.getenv("DROPBOX_APP_SECRET")
+        self.refresh_token = refresh_token or os.getenv("DROPBOX_REFRESH_TOKEN")
+        self.token = token or os.getenv("DROPBOX_ACCESS_TOKEN") or os.getenv("DROPBOX_TOKEN")
+
+        if self.app_key and self.app_secret and self.refresh_token:
+            self._dbx = dropbox.Dropbox(
+                app_key=self.app_key,
+                app_secret=self.app_secret,
+                oauth2_refresh_token=self.refresh_token,
+            )
+        elif self.token:
+            self._dbx = dropbox.Dropbox(self.token)
+        else:
             raise ValueError(
-                "Dropbox token must be provided or set in DROPBOX_TOKEN environment variable."
+                "Dropbox credentials missing: Provide DROPBOX_REFRESH_TOKEN (with APP_KEY/SECRET) "
+                "or DROPBOX_ACCESS_TOKEN in .env."
             )
 
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
-
-    def _handle_rate_limit(self, response: requests.Response) -> None:
-        """
-        Sleeps when Dropbox reports a rate limit (HTTP 429).
-        """
-        if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            delay = 2
-            if retry_after:
-                try:
-                    delay = max(1, int(retry_after))
-                except ValueError:
-                    pass
-            print(f"    ⏳ Dropbox rate limit hit. Sleeping {delay}s...")
-            time.sleep(delay)
-
-    def _post(self, endpoint: str, body: Dict[str, Any]) -> Optional[requests.Response]:
-        """
-        Posts to a JSON endpoint on api.dropboxapi.com with 429 retry handling.
-
-        Returns:
-            Response object (caller inspects status), or the last response.
-        """
-        url = f"{DROPBOX_API_BASE}/{endpoint}"
-        last = None
-        for _ in range(3):
-            last = self.session.post(url, json=body)
-            if last.status_code == 429:
-                self._handle_rate_limit(last)
-                continue
-            break
-        return last
+    @property
+    def dbx(self) -> dropbox.Dropbox:
+        """Returns the active Dropbox SDK instance."""
+        return self._dbx
 
     def test_connection(self) -> bool:
         """
-        Validates the token and API reachability against /2/users/get_current_account.
-
+        Validates credentials and API reachability by querying users_get_current_account.
+        
         Returns:
             True if connection and authentication succeed, False otherwise.
         """
         try:
-            response = self._post("users/get_current_account", {})
-            return bool(response and response.status_code == 200)
-        except Exception:
+            account = self.dbx.users_get_current_account()
+            return bool(account and account.account_id)
+        except Exception as e:
+            print(f"⚠️ Dropbox connection test failed: {e}")
             return False
 
     def get_current_account(self) -> Optional[Dict[str, Any]]:
         """
-        Returns the metadata of the authenticated account.
+        Returns the metadata dictionary of the authenticated account.
         """
-        response = self._post("users/get_current_account", {})
-        if response and response.status_code == 200:
-            return response.json()
-        return None
+        try:
+            acc = self.dbx.users_get_current_account()
+            return {
+                "account_id": acc.account_id,
+                "display_name": acc.name.display_name,
+                "email": acc.email,
+                "country": acc.country,
+            }
+        except Exception as e:
+            print(f"⚠️ Could not fetch account info: {e}")
+            return None
 
     def list_folder(
         self,
@@ -108,96 +100,119 @@ class DropboxClient:
         limit: int = 1000,
     ) -> List[Dict[str, Any]]:
         """
-        Lists folders and files under a given Dropbox path, using cursor pagination.
-
+        Lists folders and files under a given Dropbox path using SDK cursor pagination.
+        
         Args:
             path: Dropbox path (root = '' or '/').
-            recursive: If True, lists all descendants recursively via the API.
-            limit: Maximum entries per page.
+            recursive: If True, recursively lists all subfolders and files.
+            limit: Maximum entries per API page request.
 
         Returns:
-            List of Dropbox metadata entries (FileMetadata / FolderMetadata).
+            List of normalized dictionary entries.
         """
         entries: List[Dict[str, Any]] = []
-        cursor: Optional[str] = None
+        clean_path = "" if path in ("/", "\\") else path
 
-        while True:
-            body: Dict[str, Any] = {"path": path or "", "recursive": recursive, "limit": limit}
-            endpoint = "files/list_folder"
-            if cursor:
-                endpoint = "files/list_folder/continue"
-                body = {"cursor": cursor}
+        try:
+            res = self.dbx.files_list_folder(
+                path=clean_path,
+                recursive=recursive,
+                limit=min(limit, 2000),
+            )
 
-            response = self._post(endpoint, body)
-            if not response or response.status_code != 200:
-                break
+            while True:
+                for entry in res.entries:
+                    entries.append(self._entry_to_dict(entry))
 
-            data = response.json()
-            entries.extend(data.get("entries", []))
+                if not res.has_more:
+                    break
 
-            if not data.get("has_more"):
-                break
-            cursor = data.get("cursor")
+                res = self.dbx.files_list_folder_continue(res.cursor)
 
-            # Guard against infinite loops
-            if len(entries) > 100000:
-                break
+                if len(entries) > 100000:
+                    break
+
+        except (AuthError, BadInputError, RateLimitError) as e:
+            print(f"⚠️ Error listing folder '{clean_path}': {e}")
+        except Exception as e:
+            print(f"⚠️ Unexpected error listing folder '{clean_path}': {e}")
 
         return entries
 
     def get_file_metadata(self, path: str) -> Optional[Dict[str, Any]]:
         """
-        Fetches a single file or folder's metadata.
-
+        Fetches metadata for a single file or folder.
+        
         Args:
-            path: Dropbox path.
+            path: Dropbox file or folder path.
 
         Returns:
             Metadata dictionary, or None if not found / inaccessible.
         """
-        response = self._post("files/get_metadata", {"path": path})
-        if response and response.status_code == 200:
-            return response.json()
-        return None
+        try:
+            meta = self.dbx.files_get_metadata(path)
+            return self._entry_to_dict(meta)
+        except Exception as e:
+            print(f"⚠️ Could not get metadata for '{path}': {e}")
+            return None
 
     def download_file(self, path: str) -> Optional[Dict[str, Any]]:
         """
-        Downloads a text file's content from Dropbox.
-
+        Downloads a file's content from Dropbox.
+        
         Args:
             path: Dropbox path to the file.
 
         Returns:
-            Dict with 'name', 'path_lower', 'server_modified', and decoded 'content',
-            or None on failure/binary.
+            Dictionary with name, path_lower, server_modified, size, and decoded text content,
+            or None on failure.
         """
-        url = f"{DROPBOX_CONTENT_BASE}/files/download"
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Dropbox-API-Arg": __import__("json").dumps({"path": path}),
-        }
         try:
-            response = self.session.post(url, headers=headers)
-            if response.status_code == 429:
-                self._handle_rate_limit(response)
-                response = self.session.post(url, headers=headers)
-            if response.status_code != 200:
-                return None
+            metadata, response = self.dbx.files_download(path)
+            # Decode content assuming UTF-8 with latin-1 fallback
+            raw_bytes = response.content
+            try:
+                content = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content = raw_bytes.decode("latin-1", errors="replace")
 
-            result_str = response.headers.get("Dropbox-API-Result")
-            if not result_str:
-                return None
-
-            import json as _json
-            meta = _json.loads(result_str)
-
-            content = response.content.decode("utf-8", errors="replace")
             return {
-                "name": meta.get("name"),
-                "path_lower": meta.get("path_lower"),
-                "server_modified": meta.get("server_modified"),
-                "size": meta.get("size"),
+                "name": metadata.name,
+                "path_lower": metadata.path_lower,
+                "path_display": metadata.path_display,
+                "server_modified": metadata.server_modified.isoformat() if metadata.server_modified else None,
+                "client_modified": metadata.client_modified.isoformat() if metadata.client_modified else None,
+                "size": metadata.size,
+                "id": metadata.id,
+                "rev": metadata.rev,
                 "content": content,
             }
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Could not download file '{path}': {e}")
             return None
+
+    @staticmethod
+    def _entry_to_dict(entry: Any) -> Dict[str, Any]:
+        """Converts an SDK FileMetadata or FolderMetadata object into a dictionary."""
+        is_file = isinstance(entry, FileMetadata)
+        is_folder = isinstance(entry, FolderMetadata)
+
+        tag = "file" if is_file else ("folder" if is_folder else "deleted")
+
+        data: Dict[str, Any] = {
+            ".tag": tag,
+            "name": getattr(entry, "name", ""),
+            "path_lower": getattr(entry, "path_lower", ""),
+            "path_display": getattr(entry, "path_display", ""),
+            "id": getattr(entry, "id", None),
+        }
+
+        if is_file:
+            data["size"] = getattr(entry, "size", 0)
+            data["rev"] = getattr(entry, "rev", None)
+            server_mod = getattr(entry, "server_modified", None)
+            client_mod = getattr(entry, "client_modified", None)
+            data["server_modified"] = server_mod.isoformat() if server_mod else None
+            data["client_modified"] = client_mod.isoformat() if client_mod else None
+
+        return data
