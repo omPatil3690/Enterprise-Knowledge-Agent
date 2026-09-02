@@ -186,6 +186,7 @@ class DropboxClient:
                 "id": metadata.id,
                 "rev": metadata.rev,
                 "content": content,
+                "raw_bytes": raw_bytes,
             }
         except Exception as e:
             print(f"⚠️ Could not download file '{path}': {e}")

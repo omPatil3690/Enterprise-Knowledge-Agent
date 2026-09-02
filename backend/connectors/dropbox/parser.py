@@ -3,29 +3,34 @@ Dropbox Data Extraction & Normalization Parser.
 
 Transforms raw Dropbox API JSON (files, folders, metadata) into our standardized
 intermediate representation, retaining essential metadata and structured records,
-and filtering non-textual assets (images, video, audio, archives) from the pipeline.
+and parsing both plaintext files and binary formats (.pdf, .docx, .xlsx).
 """
 
 from typing import Any, Dict, List, Optional
+from backend.parsers.document_extractors import extract_document_blocks
 
-# File extensions explicitly ignored for text/knowledge retrieval
+# Binary media extensions explicitly ignored for text/knowledge retrieval
 IGNORED_TEXT_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
-    ".ico", ".bmp", ".tiff", ".pdf", ".zip", ".tar", ".gz",
+    ".ico", ".bmp", ".tiff", ".zip", ".tar", ".gz",
     ".7z", ".rar", ".mp3", ".mp4", ".wav", ".mov", ".avi",
     ".woff", ".woff2", ".ttf", ".eot", ".exe", ".dll", ".so",
     ".dylib", ".psd", ".ai", ".eps",
 }
 
-# Known binary / generated files to skip
+# Known binary / generated lock files to skip
 IGNORED_FILE_NAMES = {
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock",
     "Gemfile.lock", "Cargo.lock", "Pipfile.lock",
 }
 
-# Markdown / text-friendly extensions worth ingesting as content
-PREFERRED_TEXT_EXTENSIONS = {
+# Supported document & code extensions
+SUPPORTED_DOCUMENT_EXTENSIONS = {
+    # Rich binary documents
+    ".pdf", ".docx", ".doc", ".xlsx", ".xls",
+    # Plaintext & Markdown
     ".md", ".markdown", ".txt", ".rst", ".text",
+    # Source code & configs
     ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".c", ".cpp",
     ".h", ".go", ".rs", ".rb", ".php", ".html", ".htm", ".css",
     ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
@@ -34,7 +39,10 @@ PREFERRED_TEXT_EXTENSIONS = {
 
 
 def is_text_file(path_lower: str) -> bool:
-    """Returns False for known binary extensions and generated lock files."""
+    """
+    Returns False for known image/audio/video/archive extensions and generated lock files.
+    Returns True for text, code, PDF, Word, and Excel files.
+    """
     name = path_lower.rsplit("/", 1)[-1]
     if name in IGNORED_FILE_NAMES:
         return False
@@ -47,20 +55,22 @@ def is_text_file(path_lower: str) -> bool:
 
 def build_heading(text: str, level: int = 1) -> Dict[str, Any]:
     """Builds a normalized heading block dictionary."""
+    clean = text.strip()
     return {
-        "type": "heading",
-        "text": text.strip(),
-        "block_id": text.strip().lower().replace(" ", "_")[:60],
-        "level": level,
+        "type": f"heading_{min(max(level, 1), 3)}",
+        "text": clean,
+        "block_id": clean.lower().replace(" ", "_")[:60] or "heading",
+        "properties": {"level": level},
     }
 
 
 def build_paragraph(text: str) -> Dict[str, Any]:
     """Builds a normalized paragraph block dictionary."""
+    clean = text.strip()
     return {
         "type": "paragraph",
-        "text": text.strip(),
-        "block_id": text.strip().lower().replace(" ", "_")[:60],
+        "text": clean,
+        "block_id": clean.lower().replace(" ", "_")[:60] or "para",
     }
 
 
@@ -76,7 +86,7 @@ def extract_file_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         "source": "dropbox",
         "source_id": entry.get("id") or path_lower,
         "title": path_lower.strip("/"),
-        "url": None,
+        "url": f"dropbox://{path_lower}",
         "parent_type": "folder",
         "parent_id": parent_path,
         "created_at": entry.get("client_modified"),
@@ -96,9 +106,11 @@ def extract_file_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_file_document(
     entry: Dict[str, Any],
     content: Optional[str] = None,
+    raw_bytes: Optional[bytes] = None,
 ) -> Dict[str, Any]:
     """
-    Combines a file's metadata and optional text content into a normalized Document dict.
+    Combines a file's metadata and content into a normalized Document dict.
+    Supports PDF, Word (.docx), Excel (.xlsx), and plain text files.
     """
     doc = extract_file_entry(entry)
     blocks: List[Dict[str, Any]] = []
@@ -107,11 +119,16 @@ def normalize_file_document(
     name = doc["extra"].get("name") or path_lower
 
     blocks.append(build_heading(f"File: {name}", level=1))
-    blocks.append(build_paragraph(f"Path: {path_lower}"))
+    blocks.append(build_paragraph(f"Path: /{path_lower}"))
     if doc["extra"].get("size") is not None:
         blocks.append(build_paragraph(f"Size: {doc['extra']['size']} bytes"))
 
-    if content and content.strip():
+    # Extract binary or text content blocks
+    if raw_bytes:
+        extracted_blocks = extract_document_blocks(raw_bytes, name)
+        if extracted_blocks:
+            blocks.extend(extracted_blocks)
+    elif content and content.strip():
         blocks.append(build_heading("Content", level=2))
         blocks.append(build_paragraph(content.strip()))
 
@@ -135,7 +152,7 @@ def normalize_folder_document(
     doc["extra"]["name"] = (entry.get("name") or path_lower.rsplit("/", 1)[-1])
 
     blocks.append(build_heading(f"Folder: {doc['extra']['name']}", level=1))
-    blocks.append(build_paragraph(f"Path: {path_lower}"))
+    blocks.append(build_paragraph(f"Path: /{path_lower}"))
 
     if children:
         files = [c for c in children if c.get(".tag") == "file"]
@@ -158,8 +175,8 @@ def normalize_folder_document(
         if rows:
             blocks.append({
                 "type": "database",
-                "text": f"Folder Contents: {path_lower}",
-                "block_id": f"folder_{path_lower}",
+                "text": f"Folder Contents: /{path_lower}",
+                "block_id": f"folder_{path_lower.replace('/', '_')}",
                 "columns": ["Name", "Path", "Size", "Modified"],
                 "rows": rows,
                 "total_rows": len(rows),

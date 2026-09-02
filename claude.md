@@ -565,3 +565,49 @@ This document maintains a chronological record of all architectural decisions, c
 - [`developer_setup.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/developer_setup.md)
 
 ---
+
+## Step 36: Binary Document Extractors Setup & Test Suite Cleanup
+- **Date:** 2026-09-02
+- **Time:** 09:32:44 IST
+- **Purpose:** Remove obsolete raw HTTP fetch test scripts from Dropbox test suite and install enterprise binary document parsing dependencies (`pypdf`, `python-docx`, `openpyxl`).
+
+### Key Decisions & Rationale:
+1. **Test Suite Hygiene**: Deleted `test_dropbox_fetch.py` and `test_dropbox_extraction.py` as `test_dropbox_auth.py` and `test_run_connector.py` fully supersede raw HTTP calls.
+2. **Binary Parsing Dependencies**: Installed `pypdf==6.16.2` (PDF text extraction), `python-docx==1.2.0` (Word document parsing), and `openpyxl==3.1.5` (Excel workbook/table extraction).
+3. **Requirements Synchronization**: Updated `requirements.txt`.
+
+### Files Modified / Deleted:
+- `backend/connectors/dropbox/tests/test_dropbox_fetch.py` (Deleted)
+- `backend/connectors/dropbox/tests/test_dropbox_extraction.py` (Deleted)
+- [`requirements.txt`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/requirements.txt) (Updated)
+
+---
+
+## Step 37: Reusable Binary Document Extractors & Live Dropbox Ingestion
+- **Date:** 2026-09-02
+- **Time:** 09:51:37 IST
+- **Purpose:** Implement universal binary document parsers for PDF, Word (.docx), and Excel (.xlsx), integrate them into the Dropbox connector pipeline, and verify live on user's real documents.
+
+### Key Decisions & Rationale:
+1. **Universal Extractors Package (`backend/parsers/`)**:
+   - `extract_pdf_blocks`: Extracts text per page into page headings and paragraphs using `pypdf`.
+   - `extract_docx_blocks`: Preserves document styles (Heading 1/2/3, Bullet Lists, Paragraphs) and converts Word tables into structured `ContentBlock(type=BlockType.DATABASE)` records with column headers using `python-docx`.
+   - `extract_xlsx_blocks`: Iterates across workbook worksheets and converts non-empty rows into structured `ContentBlock(type=BlockType.DATABASE)` records using `openpyxl`.
+2. **Connector & Model Integration**:
+   - Upgraded `DropboxClient.download_file()` to return `raw_bytes` along with metadata.
+   - Upgraded `DropboxFile` and `normalize_file_document()` to accept `raw_bytes` and seamlessly invoke `extract_document_blocks()`.
+3. **Live Verification & Full OKF Bundle Generation**:
+   - Ingested 19 items live from Dropbox account, including `complex_dummy_test_document.docx` (all 7 KPI/Trend/Risk tables & sections extracted) and `leetcode 75 questions (neetcode on yt).xlsx` (all 75 problem rows & notes extracted).
+   - Generated 19 complete `.okf.md` and `.okf.json` concepts in `backend/connectors/dropbox/test_data/okf_bundle/`.
+
+### Files Created / Modified:
+- [`backend/parsers/document_extractors.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/parsers/document_extractors.py) (Created)
+- [`backend/parsers/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/parsers/__init__.py) (Created)
+- [`backend/models/dropbox.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/dropbox.py) (Updated)
+- [`backend/connectors/dropbox/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/client.py) (Updated)
+- [`backend/connectors/dropbox/parser.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/parser.py) (Updated)
+- [`backend/connectors/dropbox/connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/connector.py) (Updated)
+- [`backend/connectors/dropbox/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_connector.py) (Updated)
+- [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md) (Updated)
+
+---

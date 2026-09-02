@@ -77,49 +77,47 @@ def run_test(path: str = "", no_folders: bool = False, no_files: bool = False, m
 
     # 4. Display and Save Details for each document
     for idx, doc in enumerate(docs, 1):
-        print("\n" + "=" * 60)
-        print(f"📄 DOCUMENT #{idx}: {doc.metadata.title}")
-        print("=" * 60)
-        print(f"• ID:               {doc.metadata.id}")
-        print(f"• Platform:         {doc.metadata.source_platform}")
-        print(f"• URL:              {doc.metadata.url or 'N/A'}")
-        print(f"• Created Time:     {doc.metadata.created_time or 'N/A'}")
-        print(f"• Last Edited Time: {doc.metadata.last_edited_time or 'N/A'}")
-        print(f"• Parent Type:      {doc.metadata.parent_type or 'N/A'}")
-        print(f"• Parent ID:        {doc.metadata.parent_id or 'N/A'}")
-        print(f"• Total Root Blocks:{len(doc.blocks)}")
-        extra = doc.metadata.extra
-        if extra:
-            print(f"• Kind:             {extra.get('kind')}")
-            if extra.get("size") is not None:
-                print(f"• Size:             {extra.get('size')} bytes")
-
-        # Block types breakdown
-        types_count = {}
-        for b in doc.blocks:
-            t = b.type.value if hasattr(b.type, "value") else str(b.type)
-            types_count[t] = types_count.get(t, 0) + 1
-        print(f"• Block Breakdown:  {types_count}")
-
-        # Save JSON output
+        # Save JSON output for all documents
         safe_name = doc.metadata.title.replace("/", "_").replace("\\", "_").strip("_") or "root"
         json_filename = f"output_document_{safe_name}.json"
         json_path = TEST_DATA_DIR / json_filename
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(doc.to_dict(), f, indent=2, ensure_ascii=False)
-        print(f"\n💾 Saved structured JSON to:   {json_path.name}")
 
-        # Save Markdown output
+        # Save Markdown output for all documents
         md_filename = f"output_document_{safe_name}.md"
         md_path = TEST_DATA_DIR / md_filename
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(doc.to_markdown())
-        print(f"💾 Saved rendered Markdown to: {md_path.name}")
 
-        # Stop printing details after 5 documents to avoid terminal flood
-        if idx >= 5:
-            print("\n... (all remaining documents saved to test_data/) ...")
-            break
+        if idx <= 5:
+            print("\n" + "=" * 60)
+            print(f"📄 DOCUMENT #{idx}: {doc.metadata.title}")
+            print("=" * 60)
+            print(f"• ID:               {doc.metadata.id}")
+            print(f"• Platform:         {doc.metadata.source_platform}")
+            print(f"• URL:              {doc.metadata.url or 'N/A'}")
+            print(f"• Created Time:     {doc.metadata.created_time or 'N/A'}")
+            print(f"• Last Edited Time: {doc.metadata.last_edited_time or 'N/A'}")
+            print(f"• Parent Type:      {doc.metadata.parent_type or 'N/A'}")
+            print(f"• Parent ID:        {doc.metadata.parent_id or 'N/A'}")
+            print(f"• Total Root Blocks:{len(doc.blocks)}")
+            extra = doc.metadata.extra
+            if extra:
+                print(f"• Kind:             {extra.get('kind')}")
+                if extra.get("size") is not None:
+                    print(f"• Size:             {extra.get('size')} bytes")
+
+            # Block types breakdown
+            types_count = {}
+            for b in doc.blocks:
+                t = b.type.value if hasattr(b.type, "value") else str(b.type)
+                types_count[t] = types_count.get(t, 0) + 1
+            print(f"• Block Breakdown:  {types_count}")
+            print(f"💾 Saved structured JSON to:   {json_path.name}")
+            print(f"💾 Saved rendered Markdown to: {md_path.name}")
+        elif idx == 6:
+            print(f"\n... (remaining {len(docs) - 5} documents saved silently to {TEST_DATA_DIR.name}/) ...")
 
     print("\n" + "=" * 60)
     print("✨ Ingestion & Normalization verification complete!")
