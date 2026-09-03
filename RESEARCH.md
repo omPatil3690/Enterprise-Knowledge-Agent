@@ -892,6 +892,7 @@ We ultimately need to synchronize the entire set of Notion pages that our integr
 
 The architecture becomes:
 
+```text
                     Notion Workspace
                           │
                           ▼
@@ -909,6 +910,7 @@ The architecture becomes:
                     Normalize
                           ▼
                     Knowledge Store
+```
 
 The important part: synchronization
 
@@ -933,14 +935,16 @@ So we can maintain something like:
 
 Our metadata store
 
-## page_id last_synced_at source_updated_at
+| page_id | last_synced_at | source_updated_at |
+| :--- | :--- | :--- |
+| A | 10:00 | 09:55 |
+| B | 10:02 | 10:02 |
+| C | 10:03 | 09:40 |
 
-A 10:00 09:55
-B 10:02 10:02
-C 10:03 09:40
 
 When synchronization runs:
 
+```text
 Notion
 │
 ▼
@@ -952,6 +956,7 @@ Compare page metadata
 ├── New → process
 ├── Modified → process again
 └── Unchanged → skip
+```
 
 For example:
 
@@ -1001,6 +1006,7 @@ may no longer be valid.
 
 So eventually a modification triggers something like:
 
+```text
 Page modified
 │
 ▼
@@ -1012,6 +1018,7 @@ Re-normalize
 ├── Update vector index
 ├── Update keyword index
 └── Update graph
+```
 But don't implement synchronization yet
 
 For our current stage, I would keep the problem separated:
@@ -1042,6 +1049,7 @@ So yes, your understanding is correct: the final connector is a synchronization 
 
 ---
 
+```text
                     Email Connector
                           │
              ┌────────────┴────────────┐
@@ -1061,6 +1069,7 @@ So yes, your understanding is correct: the final connector is a synchronization 
               ▼           ▼           ▼
            Vector       Keyword      Graph
              DB           DB           DB
+```
 
 ---
 
@@ -1071,6 +1080,7 @@ body
 
 For your Enterprise Knowledge Agent, an email should become something closer to:
 
+```json
 {
 "id": "provider-specific-id",
 "source": "gmail",
@@ -1088,6 +1098,7 @@ For your Enterprise Knowledge Agent, an email should become something closer to:
 "name": "Alice",
 "email": "alice@example.com"
 }
+```
 ],
 
 "cc": [],
@@ -1126,21 +1137,29 @@ GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages
 Break it down:
 
 https://gmail.googleapis.com
+```text
 │
 └── Gmail API server
+```
 
 /gmail
+```text
 │
 └── Gmail API
+```
 
 /v1
+```text
 │
 └── API version 1
+```
 
 /users/{userId}
 /messages
+```text
 │
 └── resource being requested
+```
 
 So in plain English:
 
@@ -1212,6 +1231,7 @@ If they completely changed the behavior of the existing endpoint, your applicati
 
 Instead, API versioning allows:
 
+```text
                   Google API
                      │
             ┌────────┴────────┐
@@ -1219,6 +1239,7 @@ Instead, API versioning allows:
           v1 API            v2 API
             │                 │
        Old applications    New applications
+```
 
 The old contract can remain available while newer clients use the new contract.
 
@@ -1275,6 +1296,7 @@ Your Python program sends an HTTP request to this server.
 
 Conceptually:
 
+```text
 Your Python program
 │
 │ HTTPS request
@@ -1286,6 +1308,7 @@ Gmail API
 │
 ▼
 Your mailbox
+```
 /gmail
 
 This identifies the Gmail API service.
@@ -1349,7 +1372,9 @@ For our application:
 
 The API then understands:
 
-me → authenticated Gmail account 7. What are query parameters?
+me → authenticated Gmail account
+
+## 7. What are query parameters?
 
 You also saw:
 
@@ -1379,11 +1404,15 @@ You can have multiple:
 
 Conceptually:
 
+```text
 Endpoint
 │
 ├── Path parameters
 │
-└── Query parameters 8. Why does Gmail have q?
+└── Query parameters
+```
+
+## 8. Why does Gmail have q?
 
 This one is particularly useful for our connector.
 
@@ -1407,11 +1436,13 @@ q=from:alice@example.com after:2026/08/01
 
 So our connector can do:
 
+```python
 service.users().messages().list(
 userId="me",
 q="after:2026/08/01",
 maxResults=100
 )
+```
 
 instead of downloading everything.
 
@@ -1433,16 +1464,21 @@ Give me at most 5 messages in this response.
 
 That's what our test code is doing:
 
+```python
 messages().list(
 userId="me",
 labelIds=["INBOX"],
 maxResults=5
-) 10. But why does Gmail return only IDs?
+)
+```
+
+## 10. But why does Gmail return only IDs?
 
 This is a very important API design decision.
 
 The response looks approximately like:
 
+```json
 {
 "messages": [
 {
@@ -1453,6 +1489,7 @@ The response looks approximately like:
 "id": "def456",
 "threadId": "xyz456"
 }
+```
 ],
 "nextPageToken": "...",
 "resultSizeEstimate": 125
@@ -1530,6 +1567,7 @@ and so on.
 
 Conceptually:
 
+```text
 messages.list()
 │
 ▼
@@ -1550,6 +1588,7 @@ nextPageToken
 │
 ▼
 ...
+```
 
 This is called pagination.
 
@@ -1574,6 +1613,7 @@ is appropriate.
 
 Think of OAuth scopes as permissions:
 
+```text
 Application
 │
 ├── gmail.readonly
@@ -1584,6 +1624,7 @@ Application
 │
 └── mail.google.com
 └── Broad Gmail access
+```
 
 This is directly relevant to your Enterprise Knowledge Agent's RBAC/security architecture. Your system should request the minimum provider permissions necessary.
 
@@ -1605,6 +1646,7 @@ That's not the same thing as:
 
 They are independent.
 
+```text
 google-api-python-client
 │
 └── Python client library version
@@ -1612,6 +1654,7 @@ google-api-python-client
 Gmail API
 │
 └── /v1/ API version
+```
 
 Your Python library might be updated:
 
@@ -1619,7 +1662,9 @@ google-api-python-client 2.x → 3.x
 
 while you're still using:
 
-Gmail API v1 14. You'll see this everywhere
+Gmail API v1
+
+## 14. You'll see this everywhere
 
 Once you start building connectors, you'll notice this pattern.
 
@@ -1652,6 +1697,7 @@ So API versioning is a fundamental REST/API design concept, not something specif
 
 Our Gmail connector will eventually make requests like:
 
+```text
 Authentication
 │
 ▼
@@ -1674,6 +1720,7 @@ EmailDocument
 │
 ▼
 OKF
+```
 
 And the nice thing is that you're now seeing why each part exists, rather than treating the Gmail Python SDK as a black box.
 
@@ -2030,12 +2077,15 @@ OKF
 The three-layer idea from Notion applies verbatim:
 
 ### 1. Repository-level information
+
 Keep metadata: `full_name`, `url`, `description`, `language`, `license`, `default_branch`, stars/forks/issues, `updated_at`.
 
 ### 2. Content-level information (README + issues)
+
 Convert README markdown into semantic blocks (headings, code fences, paragraphs). Convert each issue into metadata + numbered list entries (title, state, author, labels, body).
 
 ### 3. Preserve source information
+
 Every block still knows it came from `github://owner/repo` (and, for issues, which issue number).
 
 ## Why separate fetch from normalization (again)
@@ -2135,10 +2185,10 @@ POST /2/files/download             → file bytes (content host)
 Key points:
 
 1. **Auth**: `Authorization: Bearer <token>` — a Dropbox access token (from https://www.dropbox.com/developers/apps).
-2. **Discovery vs. retrieval**: `list_folder` returns *metadata only* (name, path, size, modified). To get *content* you must call `download` for each text file. This mirrors Gmail's `list` (IDs) → `get` (payload) split.
+2. **Discovery vs. retrieval**: `list_folder` returns _metadata only_ (name, path, size, modified). To get _content_ you must call `download` for each text file. This mirrors Gmail's `list` (IDs) → `get` (payload) split.
 3. **Recursive listing**: `list_folder` accepts `recursive: true`, so we can walk the whole account tree in one call rather than recursing manually.
 4. **Cursor pagination**: `list_folder` returns `has_more` + `cursor`; pass the cursor to `list_folder/continue` until `has_more` is false — exactly the Notion `next_cursor` pattern.
-5. **`Dropbox-API-Result` header**: on content downloads, file metadata is returned in an HTTP *header* (JSON) while the body is the raw file bytes — the client must parse both.
+5. **`Dropbox-API-Result` header**: on content downloads, file metadata is returned in an HTTP _header_ (JSON) while the body is the raw file bytes — the client must parse both.
 
 ## What to extract and preserve
 
@@ -2194,12 +2244,15 @@ OKF
 The three-layer idea, applied:
 
 ### 1. File-level information
+
 Keep `path`, `name`, `size`, `server_modified`, `client_modified`.
 
 ### 2. Content-level information
+
 For text files, the downloaded content becomes `PARAGRAPH` / heading blocks (markdown preserved). For folders, a structured `database` block ("Folder Contents") lists every contained file/subfolder (Name, Path, Size, Modified) — like a Notion table.
 
 ### 3. Preserve source information
+
 Every block knows it came from `dropbox://{path}` so citations and updates stay traceable.
 
 ## Why separate fetch from normalization (again)
@@ -2243,3 +2296,2703 @@ Knowledge Store (Document → OKF)
 ### In one sentence
 
 **Dropbox becomes a hierarchical knowledge source where folders act as structured indexes and text files act as documents — while binary files are filtered out to keep the pipeline clean.**
+
+---
+
+```text
+GitHub
+│
+├── Repositories
+│ ├── README
+│ ├── source files
+│ ├── documentation
+│ └── directory structure
+│
+├── Issues
+│ ├── title
+│ ├── description
+│ ├── comments
+│ └── labels
+│
+├── Pull Requests
+│ ├── title
+│ ├── description
+│ ├── diff
+│ ├── reviews
+│ └── comments
+│
+└── Commits
+├── message
+├── author
+└── changed files
+```
+
+---
+
+We should model GitHub entities first.
+
+For example:
+
+```text
+Organization
+│
+├── Team
+│
+└── Repository
+│
+├── Branch
+│
+├── File
+│
+├── Issue
+│
+├── Pull Request
+│
+└── Commit
+```
+
+And relationships:
+
+```text
+User ──AUTHORED──> Commit
+
+User ──CREATED──> Issue
+
+User ──CREATED──> PullRequest
+
+PullRequest ──MODIFIES──> File
+
+Commit ──MODIFIES──> File
+
+Repository ──CONTAINS──> File
+
+Repository ──HAS──> Issue
+
+Repository ──HAS──> PullRequest
+
+Team ──HAS_ACCESS_TO──> Repository
+
+User ──MEMBER_OF──> Team
+```
+
+This will later make GitHub extremely useful for Graph RAG.
+
+For example:
+
+"Who owns the service that contains the authentication code?"
+
+Vector search alone isn't ideal.
+
+Graph:
+
+```text
+authentication.py
+│
+▼
+Repository
+│
+▼
+Team
+│
+▼
+Owner
+```
+
+---
+
+Don't put API calls directly inside your ingestion pipeline.
+
+Create something like:
+
+```text
+backend/
+├── connectors/
+│ └── github/
+│ ├── client.py
+│ ├── models.py
+│ ├── repository.py
+│ ├── issues.py
+│ ├── pull_requests.py
+│ ├── commits.py
+│ └── connector.py
+```
+client.py
+
+Responsible only for communication with GitHub.
+
+Conceptually:
+
+```python
+class GitHubClient:
+```
+
+    def list_repositories(self):
+        ...
+
+    def get_repository(self, owner, repo):
+        ...
+
+    def list_files(self, owner, repo, path=""):
+        ...
+
+    def get_file(self, owner, repo, path):
+        ...
+
+    def list_issues(self, owner, repo):
+        ...
+
+    def list_pull_requests(self, owner, repo):
+        ...
+
+    def list_commits(self, owner, repo):
+        ...
+
+This gives us a clean separation:
+
+GitHub API
+↓
+GitHubClient
+↓
+Connector
+↓
+OKF
+
+---
+
+This is where GitHub becomes different from Dropbox.
+
+Suppose:
+
+```text
+AI-Resume-Builder/
+│
+├── README.md
+├── frontend/
+│ ├── package.json
+│ ├── src/
+│ │ ├── components/
+│ │ └── pages/
+│
+├── backend/
+│ ├── server.js
+│ ├── controllers/
+│ ├── models/
+│ └── routes/
+│
+└── .github/
+└── workflows/
+```
+
+We need to traverse:
+
+repository
+↓
+root directory
+↓
+directories
+↓
+files
+
+But we should not treat every file equally.
+
+8. File filtering is important
+
+We don't want to embed:
+
+node*modules/
+.git/
+dist/
+build/
+.next/
+venv/
+**pycache**/
+*.lock
+\_.min.js
+binary files
+
+Instead:
+
+High-value
+.py
+.js
+.ts
+.tsx
+.java
+.cpp
+.h
+.go
+.rs
+.md
+.txt
+.yaml
+.yml
+.json
+.toml
+.sql
+Usually ignore
+node_modules/
+.git/
+dist/
+build/
+coverage/
+.next/
+venv/
+**pycache**/
+\*.lock
+
+And binaries:
+
+.png
+.jpg
+.jpeg
+.gif
+.mp4
+.zip
+.exe
+
+can be handled separately if we eventually want multimodal GitHub knowledge.
+
+---
+
+GitHub metadata will be extremely important
+
+Every chunk should carry metadata such as:
+
+```json
+{
+"source": "github",
+"repository": "omPatil3690/AI-Resume-Builder",
+"repository_id": "1144350074",
+"path": "backend/routes/auth.py",
+"branch": "main",
+"commit_sha": "...",
+"language": "python",
+"file_type": ".py",
+"visibility": "public",
+"owner": "omPatil3690"
+}
+```
+
+This allows queries such as:
+
+"Find Python authentication code in the AI Resume Builder repository."
+
+to use metadata filtering before/alongside vector retrieval.
+
+---
+
+11. Don't blindly chunk source code
+
+This is another important difference.
+
+For Markdown:
+
+heading
+paragraph
+paragraph
+heading
+paragraph
+
+normal semantic chunking works reasonably well.
+
+For code, we should eventually use structure-aware chunking:
+
+```text
+File
+│
+├── imports
+├── class AuthService
+│ ├── login()
+│ ├── logout()
+│ └── refresh_token()
+│
+└── helper_function()
+```
+
+Instead of:
+
+characters 0-1000
+characters 1000-2000
+
+For Phase 1, however, we can start with a normal token/line chunker and later add AST-aware chunking.
+
+12. Then add Issues
+
+Once repository ingestion works:
+
+```text
+Repository
+│
+├── Files
+├── Issues
+├── PRs
+└── Commits
+```
+
+Issue becomes a knowledge document:
+
+Title:
+Authentication token expires unexpectedly
+
+Body:
+...
+
+Comments:
+...
+
+Labels:
+bug, authentication
+
+Repository:
+AI-Resume-Builder
+
+Author:
+user123
+
+Created:
+...
+
+Status:
+open
+
+This is valuable for questions like:
+
+"What authentication problems has the team encountered?"
+
+13. Then Pull Requests
+
+PRs should become another document type.
+
+Example:
+
+PR #42
+
+Title:
+Fix JWT refresh token handling
+
+Description:
+...
+
+Changed files:
+backend/auth.py
+backend/middleware.py
+
+Review comments:
+...
+
+Reviews:
+...
+
+Author:
+...
+
+Now the agent can answer:
+
+"Why was the JWT refresh logic changed?"
+
+That's much more useful than simply searching source code.
+
+14. Then commits
+
+Commit data gives us temporal knowledge:
+
+```text
+Commit
+│
+├── author
+├── timestamp
+├── message
+└── changed files
+```
+
+So eventually we can answer:
+
+"When was the authentication service last modified?"
+
+or:
+
+"What changed after the security issue was reported?"
+
+This is where GitHub starts becoming very powerful for Graph RAG.
+
+15. Build the GitHub knowledge graph
+
+Once the documents work, create:
+
+```text
+(User)
+│
+│ authored
+▼
+(Commit)
+│
+│ modifies
+▼
+(File)
+│
+│ belongs_to
+▼
+(Repository)
+│
+├──────────────┐
+▼ ▼
+(Issue) (PullRequest)
+│ │
+│ │ modifies
+│ ▼
+└───────────> (File)
+```
+
+And organizational relationships:
+
+```text
+User
+│
+└── MEMBER_OF → Team
+│
+└── HAS_ACCESS_TO → Repository
+```
+
+This feeds directly into the Graph RAG architecture described in your design.
+
+16. Permissions are particularly important for GitHub
+
+Your project specifically requires permission-aware retrieval.
+
+For GitHub:
+
+```text
+User
+│
+├── Organization membership
+│
+├── Team membership
+│
+└── Repository permissions
+```
+
+Example:
+
+```text
+Alice
+└── Team: Backend
+└── Repo: payments-service
+
+Bob
+└── Team: Frontend
+└── Repo: frontend-app
+```
+
+Then:
+
+Alice asks:
+"What payment-service code handles refunds?"
+
+→ retrieve it.
+
+But:
+
+Bob asks:
+"What payment-service code handles refunds?"
+
+→ the retrieval layer must not expose the restricted repository.
+
+This directly supports the RBAC requirement in the project architecture.
+
+17. Incremental synchronization
+
+This should be designed from the beginning, even if we don't implement it immediately.
+
+We don't want:
+
+Every sync
+↓
+Download entire repository
+↓
+Re-embed everything
+
+Instead:
+
+Last sync
+↓
+Compare current state
+↓
+```text
+Changed files?
+│
+├── No → skip
+│
+└── Yes
+↓
+Re-process
+```
+↓
+Re-embed
+↓
+Update graph
+
+For GitHub, commits are particularly useful for this.
+
+18. The implementation order I recommend
+
+Don't build all GitHub functionality at once.
+
+Phase 1 — Connection
+GitHub authentication
+↓
+List repositories
+↓
+Select repository
+Phase 2 — Repository ingestion
+Repository
+↓
+Directory traversal
+↓
+Files
+↓
+Document model
+Phase 3 — OKF
+GitHub Document
+↓
+OKF
+↓
+metadata + permissions
+Phase 4 — Vector RAG
+OKF
+↓
+Chunk
+↓
+Embedding
+↓
+Qdrant/FAISS
+Phase 5 — Issues + PRs
+Issues
+PRs
+Comments
+Commits
+↓
+OKF
+Phase 6 — Graph
+Repos
+Files
+Users
+Issues
+PRs
+Commits
+Teams
+↓
+Neo4j
+Phase 7 — Permissions
+GitHub permissions
+↓
+Permission metadata
+↓
+Retriever filtering
+Phase 8 — Agent
+User query
+↓
+```text
+Planner
+│
+├── Vector
+├── Keyword
+└── Graph
+↓
+Fusion
+```
+↓
+RBAC
+↓
+LLM
+
+This matches the overall project build order: connector → OKF → permissions → second source → hybrid retrieval → graph → planner.
+
+19. What I suggest we do right now
+
+Since the GitHub connection is already working, let's not write the full connector yet.
+
+We'll implement it incrementally:
+
+STEP 1
+GitHubClient
+↓
+STEP 2
+List repositories
+↓
+STEP 3
+Get repository tree
+↓
+STEP 4
+Fetch files
+↓
+STEP 5
+Convert → Document
+↓
+STEP 6
+Convert → OKF
+
+Then we'll test it against one of your repositories.
+
+---
+
+First understand what GitHub knowledge looks like
+
+Suppose we have this repository:
+
+```text
+payments-service
+│
+├── README.md
+├── backend/
+│ ├── auth.py
+│ ├── payment.py
+│ └── refund.py
+│
+├── tests/
+│ └── test_payment.py
+│
+└── config/
+└── payment.yaml
+```
+
+But GitHub also contains:
+
+```text
+Repository
+│
+├── Files
+├── Issues
+├── Pull Requests
+├── Commits
+├── Reviews
+├── Comments
+└── Users / Teams
+```
+
+So our knowledge isn't simply:
+
+"Here is some text from a file."
+
+It is both:
+
+Unstructured/semi-structured knowledge
+
+README
+source code
+issue descriptions
+PR descriptions
+comments
+commit messages
+
+and
+
+Relationship knowledge
+
+Developer → authored → Commit
+Commit → modified → File
+PR → modified → File
+Issue → related to → PR
+User → member of → Team
+Team → has access to → Repository
+Repository → contains → File
+
+That's exactly why Graph RAG is valuable.
+
+---
+
+Normal RAG: what are we actually doing?
+
+Normal RAG answers questions by finding relevant pieces of content.
+
+The pipeline is:
+
+```text
+                     User Query
+                         │
+                         ▼
+                    Embedding
+                         │
+                         ▼
+                  Vector Search
+                         │
+              ┌──────────┴──────────┐
+              ▼                     ▼
+          Chunk 1                Chunk 2
+              │                     │
+              └──────────┬──────────┘
+                         ▼
+                     Context
+                         │
+                         ▼
+                        LLM
+                         │
+                         ▼
+                      Answer
+```
+
+For GitHub, each source object can become a searchable document.
+
+For example:
+
+auth.py
+
+becomes:
+
+```text
+Document
+├── content
+├── repository
+├── path
+├── branch
+├── commit
+├── language
+└── permissions
+```
+
+Then we chunk it.
+
+3. Example of GitHub Vector RAG
+
+Imagine the user asks:
+
+"How does authentication work in the payments service?"
+
+We embed:
+
+"How does authentication work in the payments service?"
+
+Vector search may find:
+
+1. backend/auth.py
+2. README.md
+3. backend/middleware.py
+4. tests/test_auth.py
+
+The relevant chunks might contain:
+
+def validate_token(token):
+...
+
+and:
+
+class AuthMiddleware:
+...
+
+We give those chunks to the LLM:
+
+Query
+
+- Retrieved code
+- README explanation
+- tests
+  ↓
+  LLM
+  ↓
+  "Authentication is handled by AuthMiddleware,
+  which validates JWT tokens using validate_token()..."
+
+That's normal RAG.
+
+4. Why isn't Vector RAG enough?
+
+Because many GitHub questions aren't really content-retrieval questions.
+
+Consider:
+
+"Who changed the authentication logic and why?"
+
+There are several pieces of information:
+
+Authentication code
+↓
+which commit changed it?
+↓
+who authored commit?
+↓
+what was commit message?
+↓
+was there a PR?
+↓
+what did reviewers say?
+
+That is a relationship traversal problem.
+
+Vector search might find:
+
+auth.py
+commit message
+PR description
+
+but it doesn't inherently understand:
+
+Commit X
+↓ authored by
+Alice
+↓ modified
+auth.py
+↓ associated with
+PR #42
+↓ discussed in
+Issue #38
+
+That's where Graph RAG comes in.
+
+5. Graph RAG: the fundamental idea
+
+Graph RAG uses the relationships between entities as part of retrieval.
+
+Instead of:
+
+Query
+↓
+similar chunks
+
+we have:
+
+Query
+↓
+identify entities
+↓
+find entities in graph
+↓
+traverse relationships
+↓
+retrieve connected knowledge
+↓
+LLM
+
+For GitHub:
+
+```text
+                 ┌───────────┐
+                 │ Repository│
+                 └─────┬─────┘
+                       │
+                 contains
+                       │
+                       ▼
+                    File
+                       │
+                  modified by
+                       │
+                       ▼
+                    Commit
+                       │
+                  authored by
+                       │
+                       ▼
+                     User
+```
+
+---
+
+Let's build the GitHub graph
+
+For our connector, Neo4j could contain nodes like:
+
+(:Repository)
+(:File)
+(:User)
+(:Team)
+(:Issue)
+(:PullRequest)
+(:Commit)
+
+And relationships:
+
+(:Repository)-[:CONTAINS]->(:File)
+
+(:Commit)-[:MODIFIES]->(:File)
+
+(:User)-[:AUTHORED]->(:Commit)
+
+(:User)-[:CREATED]->(:Issue)
+
+(:User)-[:CREATED]->(:PullRequest)
+
+(:PullRequest)-[:MODIFIES]->(:File)
+
+(:Issue)-[:RELATED_TO]->(:PullRequest)
+
+(:User)-[:MEMBER_OF]->(:Team)
+
+(:Team)-[:HAS_ACCESS_TO]->(:Repository)
+
+Now GitHub becomes a knowledge graph rather than merely a document store.
+
+7. Example: normal RAG vs Graph RAG
+
+Suppose the question is:
+
+"Who is responsible for the authentication code?"
+
+Vector RAG
+
+Search:
+
+"authentication code responsible owner"
+
+Potentially retrieves:
+
+auth.py
+README.md
+AUTHENTICATION.md
+
+The LLM may infer:
+
+"Alice appears to maintain authentication."
+
+But that's inference from text.
+
+Graph RAG
+
+Graph traversal:
+
+```text
+auth.py
+│
+└── belongs to
+↓
+payments-service
+│
+└── owned by
+↓
+Team A
+│
+└── members
+↓
+Alice
+```
+
+Now the answer can be grounded in explicit relationships.
+
+8. The really powerful case: multi-hop questions
+
+This is where I would emphasize Graph RAG in your project.
+
+Question:
+
+"Which developer changed the payment refund logic and is also a member of the team responsible for the payments service?"
+
+That's difficult for plain vector search.
+
+Graph:
+
+```text
+refund.py
+│
+│ MODIFIED_BY
+▼
+Commit
+│
+│ AUTHORED_BY
+▼
+Developer A
+│
+│ MEMBER_OF
+▼
+Payments Team
+│
+│ OWNS
+▼
+Payments Service
+```
+
+The graph can traverse this chain.
+
+This is a classic multi-hop retrieval problem.
+
+9. But we should NOT make Graph RAG handle everything
+
+This is an important architecture decision.
+
+Don't do:
+
+Every query
+↓
+Neo4j
+
+And don't do:
+
+Every query
+↓
+Vector DB
+
+Instead:
+
+```text
+                    User Query
+                        │
+                        ▼
+                     Planner
+                        │
+             ┌──────────┼──────────┐
+             ▼          ▼          ▼
+          Vector      Keyword     Graph
+            │           │           │
+            └───────────┼───────────┘
+                        ▼
+                    Fusion
+                        ▼
+                      RBAC
+                        ▼
+                       LLM
+```
+
+This matches your project's proposed intelligent planner architecture.
+
+10. What questions should go to Vector RAG?
+    Content-oriented questions
+
+"How does authentication work?"
+
+→ Vector
+
+"Explain the refund implementation."
+
+→ Vector
+
+"Where is JWT validation implemented?"
+
+→ Vector + keyword
+
+"What does the README say about deployment?"
+
+→ Vector
+
+"Find code related to PostgreSQL connection pooling."
+
+→ Vector + keyword
+
+These are primarily about what the content says.
+
+11. What questions should go to Graph RAG?
+    Relationship-oriented questions
+
+"Who owns the payments service?"
+
+→ Graph
+
+"Who modified the authentication code?"
+
+→ Graph
+
+"Which team maintains this repository?"
+
+→ Graph
+
+"Which issues are related to the authentication PR?"
+
+→ Graph
+
+"Who reviewed the PR that changed payment processing?"
+
+→ Graph
+
+These are primarily about relationships between entities.
+
+12. And some questions need BOTH
+
+This is where your architecture gets interesting.
+
+Suppose:
+
+"Why was the authentication system changed in PR #42?"
+
+We need:
+
+Graph
+
+Find:
+
+PR #42
+```text
+│
+├── modified → auth.py
+├── created by → Alice
+├── related issue → #38
+└── reviewed by → Bob
+```
+Vector
+
+Retrieve the actual content:
+
+PR description
+Issue description
+Review comments
+Commit message
+auth.py diff
+
+Then:
+
+Graph results +
+Vector results
+↓
+Context Fusion
+↓
+LLM
+↓
+Answer
+
+This is Hybrid Graph RAG.
+
+13. This is how I would implement your GitHub RAG
+
+Your ingestion pipeline becomes:
+
+```text
+                   GitHub
+                     │
+                     ▼
+              GitHub Connector
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+     GitHub Objects          Relationships
+          │                     │
+          ▼                     ▼
+        OKF                    Graph
+          │                     │
+          ▼                     ▼
+       Chunking              Neo4j
+          │
+          ▼
+     Embeddings
+          │
+          ▼
+      Vector DB
+```
+
+So we actually create two representations of the same GitHub knowledge.
+
+14. One GitHub file → two representations
+
+Take:
+
+backend/auth.py
+Representation 1 — Vector database
+```json
+{
+"id": "github:repo:auth.py:chunk-1",
+"text": "def validate_token(token): ...",
+"metadata": {
+"source": "github",
+"repo": "payments-service",
+"path": "backend/auth.py",
+"language": "python"
+}
+```
+}
+
+The text is what makes it useful for semantic retrieval.
+
+Representation 2 — Graph
+(:File {
+path: "backend/auth.py"
+})
+
+Connected to:
+
+(:Repository)
+(:Commit)
+(:PullRequest)
+(:User)
+(:Team)
+
+The relationships are what make it useful for graph retrieval.
+
+15. We should link the Vector DB and Graph DB
+
+This is extremely important.
+
+Don't let them become two disconnected databases.
+
+Use a common ID:
+
+github:file:payments-service:backend/auth.py
+
+Then:
+
+Vector DB
+```text
+────────────────────
+```
+chunk_id
+github:file:payments-service:backend/auth.py
+```text
+│
+│ same ID
+▼
+Neo4j
+────────────────────
+```
+File {
+id: github:file:payments-service:backend/auth.py
+}
+
+Now Graph RAG can discover:
+
+auth.py
+↓
+PR #42
+↓
+Commit abc123
+↓
+Alice
+
+and then retrieve the actual content of those objects from the vector/document store.
+
+16. Example of the complete query
+
+User asks:
+
+"What changed in the authentication system, who made the changes, and what issue was it fixing?"
+
+The planner recognizes this as:
+
+relationship + content
+
+So:
+
+Step 1 — Graph retrieval
+Authentication
+↓
+auth.py
+↓
+recent commits
+↓
+developer
+↓
+PR
+↓
+issue
+
+Graph returns IDs:
+
+File: auth.py
+
+Commit: abc123
+Author: Alice
+
+PR: #42
+
+Issue: #38
+Step 2 — Vector retrieval
+
+Use those IDs/entities to retrieve:
+
+auth.py chunks
+Commit message
+PR description
+Issue description
+PR review comments
+Step 3 — Combine
+```text
+Query
+│
+┌────────┴─────────┐
+▼ ▼
+Graph RAG Vector RAG
+│ │
+relationships content
+│ │
+└────────┬─────────┘
+▼
+Context Fusion
+│
+▼
+LLM
+```
+
+## 17. Where Keyword Search fits
+
+GitHub also has lots of exact identifiers:
+
+PR #42
+issue #183
+commit abc123
+function validate_token
+class AuthMiddleware
+error code AUTH_401
+repository payments-service
+
+Semantic search isn't always the best tool for these.
+
+So:
+
+"AUTH-401"
+
+should probably go to:
+
+Keyword / exact match
+
+while:
+
+"How does authentication work?"
+
+goes to:
+
+Vector
+
+and:
+
+"Who reviewed the PR that modified authentication?"
+
+goes to:
+
+Graph
+
+## 18. The planner becomes the brain
+
+Eventually your LangGraph agent could reason roughly like:
+
+```text
+Query
+│
+▼
+Intent / Query Analysis
+│
+├── Content question?
+│ └── Vector
+│
+├── Exact identifier?
+│ └── Keyword
+│
+├── Relationship question?
+│ └── Graph
+│
+└── Mixed / complex?
+└── Vector + Graph + Keyword
+```
+
+Then retrieval results are fused.
+
+Your README describes exactly this intended architecture: the planner chooses the appropriate retrieval tool instead of always performing plain vector search.
+
+19. RBAC happens around retrieval
+
+There's another important consideration for GitHub.
+
+Suppose:
+
+Alice → Backend Team → payments-private
+Bob → Frontend Team → frontend-public
+
+Alice can retrieve:
+
+payments-private/auth.py
+
+Bob cannot.
+
+So permission metadata should be associated with both the document/chunk and graph nodes/edges.
+
+Conceptually:
+
+```text
+                     Query
+                       │
+                       ▼
+                    Planner
+                       │
+             ┌─────────┴─────────┐
+             ▼                   ▼
+        Vector Search        Graph Search
+             │                   │
+             ▼                   ▼
+       Candidate chunks      Candidate nodes
+             │                   │
+             └─────────┬─────────┘
+                       ▼
+                 Permission Filter
+                       │
+                       ▼
+                 Authorized Context
+                       │
+                       ▼
+                      LLM
+```
+
+This is particularly important because we must not retrieve restricted GitHub information and merely tell the LLM to ignore it. The permission boundary should be enforced before generation.
+
+20. The final architecture for GitHub
+
+I'd therefore make your GitHub connector look like this:
+
+```text
+                           GitHub
+                             │
+                             ▼
+                     GitHub Connector
+                             │
+                             ▼
+                       Normalization
+                             │
+                             ▼
+                            OKF
+                             │
+                ┌────────────┴────────────┐
+                │                         │
+                ▼                         ▼
+          Document/Chunks            Entities
+                │                         │
+                ▼                         ▼
+           Embeddings                 Relations
+                │                         │
+                ▼                         ▼
+           Vector DB                  Neo4j
+                │                         │
+                └────────────┬────────────┘
+                             │
+                             ▼
+                    Hybrid Retrieval
+                             │
+                  ┌──────────┼──────────┐
+                  ▼          ▼          ▼
+                Vector     Keyword     Graph
+                  │          │          │
+                  └──────────┼──────────┘
+                             ▼
+                       Result Fusion
+                             │
+                             ▼
+                           RBAC
+                             │
+                             ▼
+                            LLM
+                             │
+                             ▼
+                    Cited Final Answer
+```
+
+21. The key distinction to remember
+
+Think of it this way:
+
+| Question Type | Best Mechanism |
+| :--- | :--- |
+| What does this code do? | Vector RAG |
+| Where is JWT validation implemented? | Vector + Keyword |
+| What does PR #42 say? | Vector |
+| Who created PR #42? | Graph |
+| Who modified auth.py? | Graph |
+| Which team owns this repository? | Graph |
+| Which issues are related to this PR? | Graph |
+| Why was this code changed? | Vector + Graph |
+| Who changed it and why? | Vector + Graph |
+| What changed between two commits? | Git/commit diff + Vector |
+| Which developer modified payment code and also belongs to the owning team? | Graph |
+| What authentication code was changed in PR #42 and why? | Graph + Vector |
+
+In one sentence:
+
+Vector RAG tells us what the GitHub content says; Graph RAG tells us how GitHub entities are connected; Hybrid Graph RAG combines both to answer complex enterprise questions.
+
+And this is why I would not start by building Neo4j immediately. First get:
+
+GitHub → files/issues/PRs → OKF → chunks → Vector RAG
+
+working correctly. Then take the same OKF objects and relationships and construct:
+
+OKF → Neo4j → Graph RAG
+
+That keeps the connector clean and makes debugging dramatically easier.
+
+---
+
+Yes — **Graphify is highly relevant to the GitHub connector**, but there is an important distinction:
+
+> **Graphify can represent the codebase very well, but it does not automatically mean that your GitHub graph contains the full GitHub lifecycle data (PRs, issues, commits, reviews, permissions).**
+
+I checked the current Graphify project and its documentation/repository. ([GitHub][1])
+
+## 1. What Graphify gives us for the codebase
+
+Graphify's core strength is turning the **actual codebase into a knowledge graph**.
+
+It uses Tree-sitter-based AST parsing for code and creates relationships such as:
+
+```text
+File
+ │
+ ├── contains → Class
+ │                │
+ │                ├── contains → Method
+ │                │
+ │                └── calls → Function
+ │
+ ├── imports → OtherFile
+ │
+ ├── inherits → OtherClass
+ │
+ └── references → Symbol
+```
+
+Graphify specifically describes cross-file relationships such as `calls`, `imports`, `inherits`, and `mixes_in`, with support across many programming languages. ([GitHub][1])
+
+So instead of our manually trying to construct:
+
+```text
+auth.py → calls → validate_token()
+```
+
+Graphify can derive this from the source code.
+
+---
+
+# 2. This is actually better than what I initially proposed
+
+For your project, I would now change the architecture slightly.
+
+Instead of:
+
+```text
+GitHub
+ ↓
+Our own AST parser
+ ↓
+Neo4j
+```
+
+we can potentially do:
+
+```text
+GitHub Repository
+       │
+       ▼
+   Graphify
+       │
+       ▼
+Code Knowledge Graph
+```
+
+Then combine that with our own GitHub metadata graph:
+
+```text
+                    GitHub Repository
+                           │
+             ┌─────────────┴─────────────┐
+             ▼                           ▼
+        Graphify                     GitHub API
+             │                           │
+             ▼                           ▼
+       Code Graph                 GitHub Metadata
+             │                           │
+             │                    ┌──────┼───────┐
+             │                    ▼      ▼       ▼
+             │                   PRs   Issues  Commits
+             │
+             ▼
+       Unified Graph
+```
+
+That is much more powerful.
+
+---
+
+# 3. What Graphify gives us
+
+For the **codebase itself**, we can get relationships like:
+
+```text
+Repository
+    │
+    ├── File
+    │     │
+    │     ├── imports
+    │     ├── calls
+    │     ├── inherits
+    │     └── contains
+    │
+    ├── Class
+    │
+    ├── Function
+    │
+    └── Module
+```
+
+Graphify also produces a `graph.json`, an interactive `graph.html`, and a report. Its current documentation explicitly describes querying the generated graph and tracing paths between concepts. ([GitHub][1])
+
+So for:
+
+> "What calls `AuthService`?"
+
+Graphify's graph is very useful.
+
+For:
+
+> "What depends on `PaymentService`?"
+
+Again, very useful.
+
+For:
+
+> "Show me the architecture around authentication."
+
+Graphify is particularly useful because its graph can expose communities/subsystems as well. ([GitHub][1])
+
+---
+
+# 4. But what about PRs, Issues and Commits?
+
+This is the crucial part.
+
+### Graphify does have Git/PR functionality now
+
+The current Graphify repository explicitly documents commands such as:
+
+```text
+graphify prs
+graphify prs 42
+graphify prs --triage
+graphify prs --conflicts
+```
+
+and its MCP server exposes:
+
+```text
+list_prs
+get_pr_impact
+triage_prs
+```
+
+So Graphify **does have functionality around PRs**. ([GitHub][1])
+
+But we should **not assume that its code graph is equivalent to a complete GitHub enterprise knowledge graph**.
+
+There is a difference between:
+
+### Code knowledge
+
+```text
+AuthService
+    ↓ calls
+validate_token()
+    ↓ imports
+jwt.py
+```
+
+and:
+
+### GitHub knowledge
+
+```text
+Alice
+    ↓ authored
+Commit abc123
+    ↓ modified
+auth.py
+    ↓ included in
+PR #42
+    ↓ resolves
+Issue #38
+    ↓ reviewed by
+Bob
+```
+
+We need both.
+
+---
+
+# 5. Therefore, I recommend a two-layer GitHub graph
+
+This is the architecture I'd use for your project.
+
+```text
+                     GITHUB
+                       │
+             ┌─────────┴──────────┐
+             │                    │
+             ▼                    ▼
+        Repository             GitHub API
+             │                    │
+             ▼                    ├── PRs
+         Graphify                ├── Issues
+             │                    ├── Commits
+             ▼                    ├── Reviews
+       CODE GRAPH                ├── Comments
+             │                    └── Users/Teams
+             │
+             └─────────┬──────────┘
+                       ▼
+                UNIFIED GRAPH
+                       │
+                       ▼
+                    Neo4j
+```
+
+This is much closer to what your Enterprise Knowledge Agent needs.
+
+---
+
+# 6. Example of the unified graph
+
+Suppose we have:
+
+```text
+backend/auth.py
+```
+
+Graphify can give us:
+
+```text
+AuthService
+      │
+      ├── calls → validate_token
+      │
+      ├── imports → jwt
+      │
+      └── inherits → BaseService
+```
+
+Our GitHub connector can give us:
+
+```text
+auth.py
+   │
+   ├── modified_by → Commit abc123
+   │                         │
+   │                         └── authored_by → Alice
+   │
+   └── changed_in → PR #42
+                           │
+                           ├── created_by → Alice
+                           ├── reviewed_by → Bob
+                           └── resolves → Issue #38
+```
+
+Then we connect the two:
+
+```text
+Graphify                    GitHub
+────────                    ──────
+
+AuthService
+    │
+    ▼
+auth.py ─────────────────→ Commit abc123
+    │                           │
+    │                           ▼
+    │                         Alice
+    │
+    ▼
+PR #42
+    │
+    ▼
+Issue #38
+```
+
+Now the system understands both **technical architecture** and **development history**.
+
+---
+
+# 7. And this changes our Graph RAG substantially
+
+Previously I described Graph RAG as:
+
+```text
+User
+ ↓
+Query
+ ↓
+Neo4j
+ ↓
+Relationships
+ ↓
+LLM
+```
+
+Now it becomes:
+
+```text
+                         User Query
+                             │
+                             ▼
+                          Planner
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+          Vector RAG     GitHub Graph    Code Graph
+              │              │              │
+              │              │              │
+              ▼              ▼              ▼
+          Documents        PRs/Issues     Functions
+          Comments         Commits        Classes
+          README           Users          Imports
+          PR text          Reviews        Calls
+              │              │              │
+              └──────────────┼──────────────┘
+                             ▼
+                       Context Fusion
+                             │
+                             ▼
+                            RBAC
+                             │
+                             ▼
+                            LLM
+```
+
+This is much closer to a real **enterprise code intelligence system**.
+
+---
+
+# 8. Let's take a concrete question
+
+Suppose the user asks:
+
+> **"Why was the authentication service changed last month?"**
+
+This is an excellent example.
+
+### Graphify/code graph
+
+Find:
+
+```text
+AuthenticationService
+        │
+        ▼
+auth.py
+        │
+        ▼
+functions/classes affected
+```
+
+### GitHub graph
+
+Then:
+
+```text
+auth.py
+   │
+   ▼
+Commits from last month
+   │
+   ▼
+Commit abc123
+   │
+   ▼
+PR #42
+   │
+   ▼
+Issue #38
+```
+
+### Vector RAG
+
+Retrieve the actual textual context:
+
+```text
+PR description
+Issue description
+Commit message
+Review comments
+Relevant code
+README documentation
+```
+
+Then the LLM can answer:
+
+> "The authentication service was changed because issue #38 identified token refresh failures. PR #42 modified `AuthService.refresh_token()` and the JWT middleware. Alice implemented the change and Bob reviewed it."
+
+That is much stronger than ordinary RAG.
+
+---
+
+# 9. Another powerful example
+
+User:
+
+> **"If I change `validate_token()`, what parts of the system could be affected?"**
+
+This is almost purely a **code graph** question.
+
+Graphify can help traverse:
+
+```text
+validate_token()
+       │
+       ├── called by → AuthMiddleware
+       │
+       ├── called by → LoginService
+       │
+       └── called by → APIHandler
+```
+
+Then:
+
+```text
+AuthMiddleware
+LoginService
+APIHandler
+```
+
+can be expanded further.
+
+This is exactly the kind of multi-hop reasoning that graph-based retrieval is good at.
+
+---
+
+# 10. And now add Git history
+
+Question:
+
+> **"Which of these components have changed recently?"**
+
+Now combine:
+
+```text
+Code Graph
+    │
+    ├── AuthMiddleware
+    ├── LoginService
+    └── APIHandler
+             │
+             ▼
+       GitHub Graph
+             │
+             ▼
+       recent commits
+```
+
+That's something a pure code graph doesn't know.
+
+---
+
+# 11. Do we still need Vector RAG?
+
+**Absolutely.**
+
+Graphify itself emphasizes that its approach is a real graph rather than a vector index. ([GitHub][1])
+
+That doesn't make vector RAG obsolete.
+
+They solve different problems.
+
+### Graph
+
+Excellent at:
+
+```text
+Who?
+What connects to what?
+What depends on what?
+Who modified this?
+Which PR changed this?
+Which team owns this?
+What calls this?
+```
+
+### Vector
+
+Excellent at:
+
+```text
+What does this document explain?
+Why was this change made?
+What did the reviewer say?
+What does the README recommend?
+Find semantically similar code/documentation.
+```
+
+### Keyword
+
+Excellent at:
+
+```text
+PR #42
+ISSUE-183
+AUTH_401
+validate_token
+commit abc123
+```
+
+So your final system should be:
+
+```text
+              Enterprise Knowledge Agent
+                         │
+                         ▼
+                      Planner
+                         │
+          ┌──────────────┼───────────────┐
+          ▼              ▼               ▼
+       Vector          Keyword          Graph
+        RAG             RAG              RAG
+          │              │               │
+          │         ┌────┴────┐          │
+          │         │         │          │
+          │       GitHub   Metadata      │
+          │                              │
+          └──────────────┬───────────────┘
+                         ▼
+                    Result Fusion
+                         ▼
+                        RBAC
+                         ▼
+                        LLM
+```
+
+---
+
+# 12. What about OKF?
+
+This is where your existing architecture becomes useful.
+
+I would **not make Graphify your OKF**.
+
+Instead:
+
+```text
+                    GitHub
+                      │
+             ┌────────┴─────────┐
+             ▼                  ▼
+          GitHub API         Repository
+             │                  │
+             │               Graphify
+             ▼                  ▼
+         GitHub data        Code Graph
+             │                  │
+             └────────┬─────────┘
+                      ▼
+                  Normalization
+                      ▼
+                     OKF
+                      │
+            ┌─────────┴──────────┐
+            ▼                    ▼
+       Vector Index          Graph Index
+                                  │
+                                  ▼
+                                Neo4j
+```
+
+**OKF remains your internal canonical representation.**
+
+Graphify becomes a **specialized code-understanding/graph-construction component**.
+
+That is a cleaner architecture than making Graphify the central data model.
+
+---
+
+# 13. One caveat: PR/Issue/Commit completeness
+
+This is the part where I would be careful.
+
+From the current Graphify material, we can verify that it has explicit PR functionality and Git-aware features. ([GitHub][1])
+
+But I would **not rely on Graphify alone for your enterprise GitHub synchronization layer**.
+
+For our Enterprise Knowledge Agent, we need authoritative GitHub API data for:
+
+```text
+Repositories
+Branches
+Files
+Commits
+PRs
+PR reviews
+PR comments
+Issues
+Issue comments
+Users
+Teams
+Repository permissions
+```
+
+Your existing GitHub connector can provide those.
+
+So:
+
+> **GitHub API = source of truth**
+
+> **Graphify = codebase structural intelligence**
+
+> **Neo4j = our unified enterprise graph**
+
+> **Vector DB = semantic knowledge retrieval**
+
+That's the separation I recommend.
+
+---
+
+# 14. The final architecture I'd recommend
+
+```text
+                         ┌──────────────┐
+                         │    GitHub    │
+                         └──────┬───────┘
+                                │
+                ┌───────────────┴────────────────┐
+                │                                │
+                ▼                                ▼
+       ┌────────────────┐                ┌────────────────┐
+       │   GitHub API   │                │    Graphify    │
+       │                │                │                │
+       │ PRs            │                │ AST            │
+       │ Issues         │                │ Functions      │
+       │ Commits        │                │ Classes        │
+       │ Reviews        │                │ Imports        │
+       │ Comments       │                │ Calls          │
+       │ Users/Teams    │                │ Dependencies   │
+       └───────┬────────┘                └───────┬────────┘
+               │                                 │
+               └──────────────┬──────────────────┘
+                              ▼
+                         OKF Layer
+                              │
+                 ┌────────────┴─────────────┐
+                 ▼                          ▼
+            Vector Store                Neo4j
+                 │                          │
+                 │                    Unified Graph
+                 │                          │
+                 └────────────┬─────────────┘
+                              ▼
+                       Hybrid Graph RAG
+                              │
+                              ▼
+                           Planner
+                              │
+                              ▼
+                            RBAC
+                              │
+                              ▼
+                             LLM
+                              │
+                              ▼
+                    Grounded + Cited Answer
+```
+
+### So, to your two questions directly:
+
+**1. Can Graphify be used to represent the codebase?**
+
+**Yes, absolutely.** That's one of its primary purposes. It creates a queryable code knowledge graph from AST-derived relationships such as calls, imports, inheritance, and cross-file links. ([GitHub][1])
+
+**2. Will Graphify alone give us complete context about PRs, Issues, Commits, reviews, permissions, etc.?**
+
+**No — I would not design the system that way.** Graphify has PR/Git-related capabilities, but for an enterprise connector we should use the **GitHub API as the authoritative source for GitHub lifecycle and permission data**, then combine that with Graphify's much richer code-structure graph.
+
+And that combination is actually **better for your project** than choosing one or the other.
+
+If we proceed this way, the next thing we should design is the **exact unified GitHub OKF schema** showing how `Repository → File → Function → Commit → PR → Issue → User → Team` all map into your existing `Document`, `Entity`, `Relationship`, and permission models.
+
+[1]: https://github.com/Graphify-Labs/graphify?utm_source=chatgpt.com "GitHub - Graphify-Labs/graphify: Turn any codebase, with its docs, SQL schemas, configs, and PDFs, into a queryable knowledge graph. A /graphify skill for Claude Code, Cursor, Codex, and Gemini CLI: local deterministic AST parsing, every edge explained, no vector store. · GitHub"
+
+---
+
+Yes. If we **didn't have Graphify**, our original plan was to build the GitHub knowledge graph ourselves from the GitHub API. That's actually the plan we were heading toward before introducing Graphify.
+
+The distinction is important because **Graphify is an optimization/specialized component, not a fundamental requirement for the architecture**.
+
+## 1. Our original plan
+
+The original GitHub architecture was essentially:
+
+```text
+                 GitHub API
+                     │
+          ┌──────────┼──────────┐
+          ▼          ▼          ▼
+       Files        PRs       Issues
+          │          │          │
+          ▼          ▼          ▼
+       Commits    Reviews    Comments
+          │          │          │
+          └──────────┼──────────┘
+                     ▼
+                Normalization
+                     │
+                     ▼
+                    OKF
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+      Vector DB              Neo4j
+          │                     │
+          ▼                     ▼
+       Vector RAG            Graph RAG
+```
+
+And **we would manually construct the Neo4j graph from GitHub's data**.
+
+---
+
+# 2. What exactly would we extract?
+
+We would use the GitHub API to collect several categories.
+
+### Repository
+
+```text
+Repository
+├── name
+├── owner
+├── description
+├── visibility
+├── default branch
+└── permissions
+```
+
+GitHub's repository API exposes repository metadata including visibility, owner, default branch-related information, and other repository properties. ([GitHub Docs][1])
+
+### Files
+
+We recursively traverse:
+
+```text
+Repository
+    │
+    ▼
+Directory
+    │
+    ├── File
+    ├── Directory
+    │     └── File
+    └── File
+```
+
+GitHub's Contents API supports retrieving files/directories, and GitHub explicitly recommends the Git Trees API when recursively retrieving larger repositories. ([GitHub Docs][2])
+
+---
+
+# 3. Then we would manually understand the code
+
+This was the big part of our original plan.
+
+For:
+
+```text
+backend/auth.py
+```
+
+we would parse the source ourselves.
+
+Potentially using:
+
+```text
+Tree-sitter
+    ↓
+AST
+    ↓
+Extract:
+    ├── classes
+    ├── functions
+    ├── imports
+    ├── function calls
+    ├── inheritance
+    └── references
+```
+
+Then generate graph relationships:
+
+```text
+auth.py
+   │
+   ├── CONTAINS → AuthService
+   │
+   ├── IMPORTS → jwt.py
+   │
+   └── CONTAINS → validate_token()
+
+AuthService
+   │
+   └── CALLS → validate_token()
+```
+
+**This is exactly the area where Graphify saves us substantial work.**
+
+---
+
+# 4. Then we would separately collect GitHub activity
+
+This is the part Graphify shouldn't necessarily replace.
+
+We would call GitHub APIs for:
+
+```text
+Repository
+│
+├── Commits
+│
+├── Pull Requests
+│    ├── comments
+│    ├── reviews
+│    └── changed files
+│
+└── Issues
+     └── comments
+```
+
+GitHub's PR API explicitly exposes relationships to the PR's issue, comments, review comments, commits, and statuses. ([GitHub Docs][3])
+
+So we'd construct those relationships ourselves.
+
+---
+
+# 5. The graph we would have built
+
+For example:
+
+```text
+                    Repository
+                    /        \
+                   /          \
+              contains       has
+                 /             \
+                ▼               ▼
+              File            Issue
+               │                │
+          modified_by       related_to
+               │                │
+               ▼                ▼
+             Commit ←─────── Pull Request
+               │                 │
+          authored_by        reviewed_by
+               │                 │
+               ▼                 ▼
+              User              User
+```
+
+And code structure:
+
+```text
+File
+ │
+ ├── contains → Class
+ │                 │
+ │                 └── contains → Method
+ │
+ ├── imports → File
+ │
+ └── references → Function
+```
+
+So the **same Neo4j database would contain both code structure and GitHub activity**.
+
+---
+
+# 6. The really important part: connecting them
+
+Suppose:
+
+```text
+auth.py
+```
+
+contains:
+
+```python
+class AuthService:
+    def validate_token(...):
+        ...
+```
+
+Our graph would contain:
+
+```text
+AuthService
+      │
+      └── DEFINES → validate_token
+                         │
+                         ▼
+                       auth.py
+```
+
+Then GitHub information gives:
+
+```text
+auth.py
+   │
+   └── MODIFIED_BY → Commit abc123
+                         │
+                         ▼
+                      Alice
+```
+
+and:
+
+```text
+Commit abc123
+      │
+      └── PART_OF → PR #42
+                       │
+                       └── RESOLVES → Issue #38
+```
+
+So we'd eventually have:
+
+```text
+Alice
+  │
+  │ authored
+  ▼
+Commit abc123
+  │
+  │ modified
+  ▼
+auth.py
+  │
+  │ contains
+  ▼
+AuthService
+  │
+  │ defines
+  ▼
+validate_token()
+```
+
+That's the **unified code + GitHub knowledge graph** we originally wanted.
+
+---
+
+# 7. What would RAG do in that architecture?
+
+We would still have a Vector DB.
+
+For example:
+
+```text
+auth.py
+README.md
+PR #42 description
+Issue #38 description
+PR comments
+Commit messages
+```
+
+would all be converted into chunks and embedded.
+
+Then:
+
+```text
+User:
+"Why was validate_token changed?"
+```
+
+could retrieve:
+
+```text
+Vector RAG
+   │
+   ├── PR #42 description
+   ├── Issue #38 description
+   ├── commit message
+   └── auth.py
+```
+
+---
+
+# 8. What would Graph RAG do?
+
+The graph would answer the relationship side:
+
+```text
+validate_token()
+      ↓
+auth.py
+      ↓
+Commit abc123
+      ↓
+Alice
+      ↓
+PR #42
+      ↓
+Issue #38
+```
+
+Then we'd combine the graph results with the vector results.
+
+```text
+                 Query
+                   │
+                   ▼
+                Planner
+                 /   \
+                /     \
+               ▼       ▼
+          Vector RAG  Graph RAG
+              │          │
+              ▼          ▼
+          Text/content  Relationships
+              │          │
+              └────┬─────┘
+                   ▼
+               Context
+                   │
+                   ▼
+                  LLM
+```
+
+---
+
+# 9. So what does Graphify change?
+
+It mainly changes **how we build the code graph**.
+
+### Without Graphify
+
+We would need to implement:
+
+```text
+GitHub
+  ↓
+Download code
+  ↓
+Tree-sitter
+  ↓
+AST parsing
+  ↓
+Symbol extraction
+  ↓
+Function extraction
+  ↓
+Class extraction
+  ↓
+Import analysis
+  ↓
+Call graph
+  ↓
+Dependency graph
+  ↓
+Graph construction
+  ↓
+Neo4j
+```
+
+That's a significant engineering project by itself.
+
+### With Graphify
+
+Potentially:
+
+```text
+GitHub Repository
+       ↓
+    Graphify
+       ↓
+  Code Knowledge Graph
+       ↓
+      Neo4j
+```
+
+So we don't have to reinvent the code-analysis portion.
+
+---
+
+# 10. But we still need our GitHub connector
+
+This is the key conclusion.
+
+I **would not change the project to:**
+
+```text
+GitHub → Graphify → everything
+```
+
+I'd do:
+
+```text
+                     GitHub
+                       │
+              ┌────────┴────────┐
+              ▼                 ▼
+        GitHub Connector      Graphify
+              │                 │
+              │                 │
+       ┌──────┼──────┐          │
+       ▼      ▼      ▼          ▼
+      PRs   Issues Commits   Code Graph
+       │      │      │          │
+       └──────┼──────┘          │
+              │                 │
+              └────────┬────────┘
+                       ▼
+                 Unified Graph
+                       │
+                       ▼
+                     Neo4j
+```
+
+And separately:
+
+```text
+GitHub
+  │
+  ▼
+Documents
+  │
+  ▼
+Chunking
+  │
+  ▼
+Embeddings
+  │
+  ▼
+Vector DB
+```
+
+---
+
+# 11. Why this is actually a better design
+
+We can now divide responsibilities cleanly:
+
+| Component                | Responsibility                    |
+| ------------------------ | --------------------------------- |
+| **GitHub API**           | Source of truth for GitHub data   |
+| **Our GitHub connector** | Fetch + normalize GitHub objects  |
+| **Graphify**             | Understand source-code structure  |
+| **OKF**                  | Canonical internal representation |
+| **Neo4j**                | Store unified relationships       |
+| **Vector DB**            | Semantic content retrieval        |
+| **Planner**              | Decide Vector / Graph / Keyword   |
+| **RBAC**                 | Enforce GitHub permissions        |
+| **LLM**                  | Reason over retrieved context     |
+
+That is more defensible architecturally.
+
+---
+
+## 12. One thing I would change from our original plan
+
+Originally, we were thinking:
+
+> **"We'll build the code knowledge graph ourselves."**
+
+Now that we've found Graphify, I wouldn't spend our time rebuilding that functionality unless the goal is specifically to learn/own the compiler/AST side.
+
+I'd use Graphify for:
+
+```text
+Code → AST → code relationships
+```
+
+and spend our engineering effort on the **enterprise-specific part**:
+
+```text
+GitHub API
+   ↓
+PR / Issue / Commit / Review / Permission knowledge
+   ↓
+OKF
+   ↓
+Unified Neo4j graph
+   ↓
+Graph RAG
+```
+
+That's where your Enterprise Knowledge Agent becomes more than a generic code graph.
+
+### In short
+
+**Without Graphify:** we would have built the code graph ourselves using Tree-sitter/AST analysis + Neo4j, while separately ingesting PRs, Issues, Commits, Reviews, etc. through GitHub APIs.
+
+**With Graphify:** let Graphify handle the difficult **codebase structural graph**, while **our GitHub connector handles GitHub's organizational/development context**, and then merge both into our unified graph.
+
+That is the approach I'd choose now.
+
+[1]: https://docs.github.com/en/rest/repos/repos?piVersion=2022-11-28&utm_source=chatgpt.com "REST API endpoints for repositories - GitHub Docs"
+[2]: https://docs.github.com/en/rest/repos/contents?utm_source=chatgpt.com "REST API endpoints for repository contents - GitHub Docs"
+[3]: https://docs.github.com/en/rest/pulls/pulls?utm_source=chatgpt.com "REST API endpoints for pull requests - GitHub Docs"

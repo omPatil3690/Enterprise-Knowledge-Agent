@@ -497,7 +497,39 @@ This document maintains a chronological record of all architectural decisions, c
 1. **Complete File Matrix**: Documented all 4 test scripts (`test_run_okf.py`, `test_run_connector.py`, `test_parser.py`, `test_gmail.py`) with input arguments, purpose, and generated output files.
 2. **Directory Layout Guide**: Outlined the complete storage layout under `backend/connectors/email/gmail/test_data/`.
 
+---
+
+## Step 32: System-Wide Documentation Synchronization & Formatting (`DOCUMENTS.md`)
+- **Date:** 2026-09-03
+- **Time:** 18:57:30 IST
+- **Purpose:** Restructure and format `DOCUMENTS.md` with complete, properly aligned Markdown tables, GitHub alert blocks, a table of contents, and all official developer portal/API reference links.
+
+### Key Decisions & Rationale:
+1. **Clear Navigation & Structure**: Added an indexed Table of Contents covering 9 distinct categories:
+   - Email (Gmail & Workspace), Cloud Storage (Dropbox & Drive), Notion, Atlassian (Confluence & Jira), Code (GitHub), Collaboration (Slack), AI/LLMs (Gemini, OpenAI, Claude), Databases (Qdrant, ChromaDB, Neo4j), and Parsing Engines (PyPDF, python-docx, openpyxl).
+2. **Standardized Formatting**: Enforced clean GitHub-Flavored Markdown tables with explicit columns (`Resource`, `Description`, `Official URL`) and clickable external links.
+3. **Security & Implementation Notes**: Integrated GitHub callout blocks (`> [!NOTE]`, `> [!TIP]`) highlighting least-privilege scopes and token lifecycle rules.
+
 ### Files Modified:
-- [`backend/connectors/email/gmail/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/README.md)
+- [`DOCUMENTS.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/DOCUMENTS.md)
 
 ---
+
+## Step 33: Comprehensive Markdown Representation & Formatting (`RESEARCH.md`)
+- **Date:** 2026-09-03
+- **Time:** 23:04:45 IST
+- **Purpose:** Format `RESEARCH.md` into clean GitHub-Flavored Markdown without altering section ordering, sequence, or substantive content.
+
+### Key Decisions & Rationale:
+1. **Diagram & Schema Encapsulation**: Enclosed all unformatted ASCII flowcharts, tree structures, and architecture diagrams in explicit ````text ... ```` code fences with complete root and footer boundaries.
+2. **Payload Syntax Highlighting**: Wrapped raw JSON response payloads and data dictionaries in ````json ... ```` fences, and Python client API calls in ````python ... ```` fences.
+3. **Tabular Data Conversion**: Formatted pseudo-tables (e.g. metadata sync tables, question-type vs retrieval mechanism matrix) into aligned GitHub-Flavored Markdown tables.
+4. **Header Separation**: Fixed inline accidental concatenations (e.g. `me → authenticated Gmail account 7. What are query parameters?`) into clean standalone markdown section headings (`## 7. What are query parameters?`).
+5. **Content Integrity**: Verified 100% balanced code fences (370 total) and verified that all 105 headings and core content blocks maintain the exact chronological research sequence.
+
+### Files Modified:
+- [`RESEARCH.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/RESEARCH.md)
+
+---
+
+
