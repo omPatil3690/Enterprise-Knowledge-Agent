@@ -501,3 +501,113 @@ This document maintains a chronological record of all architectural decisions, c
 - [`backend/connectors/email/gmail/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/email/gmail/tests/README.md)
 
 ---
+
+## Step 32: Official Dropbox Python SDK Integration & Connectivity Verification
+- **Date:** 2026-09-01
+- **Time:** 13:30:25 IST
+- **Purpose:** Install and integrate the official `dropbox` Python SDK (v12.2.1) and implement connectivity test via `test_dropbox_auth.py`.
+
+### Key Decisions & Rationale:
+1. **Official SDK Integration**: Installed `dropbox==12.2.1` into virtual environment (`.venv`).
+2. **Authentication Verification**: Created `backend/connectors/dropbox/tests/test_dropbox_auth.py` verifying `users_get_current_account()` and folder listing.
+3. **Scope Diagnosis**: Verified live connection for account `Om Patil` (`ompatilseetara@gmail.com`) and identified missing `files.metadata.read` scope on the generated access token.
+
+### Files Created:
+- [`backend/connectors/dropbox/tests/test_dropbox_auth.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_dropbox_auth.py)
+
+---
+
+## Step 33: Dropbox SDK Refactor & OKF v0.2 Knowledge Bundle Generation
+- **Date:** 2026-09-01
+- **Time:** 23:44:59 IST
+- **Purpose:** Refactor `DropboxClient` using the official `dropbox.Dropbox` Python SDK with auto-refresh token support, verify `BaseConnector` lifecycle, and generate live OKF v0.2 Knowledge Bundles.
+
+### Key Decisions & Rationale:
+1. **SDK-Powered Client**: Upgraded `DropboxClient` to utilize `dropbox.Dropbox` with `app_key`, `app_secret`, and `oauth2_refresh_token` for automatic background token lifecycle management.
+2. **Interactive Refresh Token Helper**: Created `backend/connectors/dropbox/tests/get_refresh_token.py` using `DropboxOAuth2FlowNoRedirect` with `token_access_type='offline'`.
+3. **Live Ingestion Verification**: Ran `test_run_connector.py` and `test_run_okf.py` live against Dropbox account, ingesting 9 documents and generating `.okf.md`, `index.md`, and `log.md` files in `backend/connectors/dropbox/test_data/okf_bundle/`.
+
+### Files Created / Modified:
+- [`backend/connectors/dropbox/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/client.py) (Upgraded to official SDK)
+- [`backend/connectors/dropbox/tests/get_refresh_token.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/get_refresh_token.py) (Created)
+- [`backend/connectors/dropbox/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_connector.py) (Updated)
+- [`backend/connectors/dropbox/tests/test_run_okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_okf.py) (Updated)
+
+---
+
+## Step 34: Dropbox Test Suite Documentation Update (`backend/connectors/dropbox/tests/README.md`)
+- **Date:** 2026-09-01
+- **Time:** 23:47:01 IST
+- **Purpose:** Update the Dropbox test suite documentation to reflect the official `dropbox` SDK usage, OAuth 2.0 refresh token helper, and test execution commands.
+
+### Key Decisions & Rationale:
+1. **Documented SDK Test Scripts**: Added `test_dropbox_auth.py` and `get_refresh_token.py` to the testing matrix.
+2. **Updated Execution Reference**: Standardized CLI commands and output locations for `.okf.md` bundles.
+
+### Files Modified:
+- [`backend/connectors/dropbox/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/README.md)
+
+---
+
+## Step 35: System-Wide Documentation Synchronization (`DOCUMENTS.md`, `NOTES.md`, `developer_setup.md`)
+- **Date:** 2026-09-02
+- **Time:** 00:07:30 IST
+- **Purpose:** Synchronize all documentation markdown files to ensure Dropbox connector developer URLs, pending OCR/binary notes, architecture diagrams, and environment variable references are 100% updated and consistent across the repository.
+
+### Key Decisions & Rationale:
+1. **`DOCUMENTS.md`**: Added Section 3 for Dropbox (App Console, OAuth 2.0 guide, Python SDK docs, API HTTP reference, and API Explorer).
+2. **`NOTES.md`**: Added Note #3 for handling future binary attachments (`.docx`, `.xlsx`, `.pdf`) and proprietary `.paper` documents for Dropbox.
+3. **`developer_setup.md`**: Updated data source diagrams, added dedicated Section 10 for Dropbox connector setup, and updated `.env` templates with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, and `DROPBOX_ACCESS_TOKEN`.
+
+### Files Modified:
+- [`DOCUMENTS.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/DOCUMENTS.md)
+- [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md)
+- [`developer_setup.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/developer_setup.md)
+
+---
+
+## Step 36: Binary Document Extractors Setup & Test Suite Cleanup
+- **Date:** 2026-09-02
+- **Time:** 09:32:44 IST
+- **Purpose:** Remove obsolete raw HTTP fetch test scripts from Dropbox test suite and install enterprise binary document parsing dependencies (`pypdf`, `python-docx`, `openpyxl`).
+
+### Key Decisions & Rationale:
+1. **Test Suite Hygiene**: Deleted `test_dropbox_fetch.py` and `test_dropbox_extraction.py` as `test_dropbox_auth.py` and `test_run_connector.py` fully supersede raw HTTP calls.
+2. **Binary Parsing Dependencies**: Installed `pypdf==6.16.2` (PDF text extraction), `python-docx==1.2.0` (Word document parsing), and `openpyxl==3.1.5` (Excel workbook/table extraction).
+3. **Requirements Synchronization**: Updated `requirements.txt`.
+
+### Files Modified / Deleted:
+- `backend/connectors/dropbox/tests/test_dropbox_fetch.py` (Deleted)
+- `backend/connectors/dropbox/tests/test_dropbox_extraction.py` (Deleted)
+- [`requirements.txt`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/requirements.txt) (Updated)
+
+---
+
+## Step 37: Reusable Binary Document Extractors & Live Dropbox Ingestion
+- **Date:** 2026-09-02
+- **Time:** 09:51:37 IST
+- **Purpose:** Implement universal binary document parsers for PDF, Word (.docx), and Excel (.xlsx), integrate them into the Dropbox connector pipeline, and verify live on user's real documents.
+
+### Key Decisions & Rationale:
+1. **Universal Extractors Package (`backend/parsers/`)**:
+   - `extract_pdf_blocks`: Extracts text per page into page headings and paragraphs using `pypdf`.
+   - `extract_docx_blocks`: Preserves document styles (Heading 1/2/3, Bullet Lists, Paragraphs) and converts Word tables into structured `ContentBlock(type=BlockType.DATABASE)` records with column headers using `python-docx`.
+   - `extract_xlsx_blocks`: Iterates across workbook worksheets and converts non-empty rows into structured `ContentBlock(type=BlockType.DATABASE)` records using `openpyxl`.
+2. **Connector & Model Integration**:
+   - Upgraded `DropboxClient.download_file()` to return `raw_bytes` along with metadata.
+   - Upgraded `DropboxFile` and `normalize_file_document()` to accept `raw_bytes` and seamlessly invoke `extract_document_blocks()`.
+3. **Live Verification & Full OKF Bundle Generation**:
+   - Ingested 19 items live from Dropbox account, including `complex_dummy_test_document.docx` (all 7 KPI/Trend/Risk tables & sections extracted) and `leetcode 75 questions (neetcode on yt).xlsx` (all 75 problem rows & notes extracted).
+   - Generated 19 complete `.okf.md` and `.okf.json` concepts in `backend/connectors/dropbox/test_data/okf_bundle/`.
+
+### Files Created / Modified:
+- [`backend/parsers/document_extractors.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/parsers/document_extractors.py) (Created)
+- [`backend/parsers/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/parsers/__init__.py) (Created)
+- [`backend/models/dropbox.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/dropbox.py) (Updated)
+- [`backend/connectors/dropbox/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/client.py) (Updated)
+- [`backend/connectors/dropbox/parser.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/parser.py) (Updated)
+- [`backend/connectors/dropbox/connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/connector.py) (Updated)
+- [`backend/connectors/dropbox/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_connector.py) (Updated)
+- [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md) (Updated)
+
+---
