@@ -7,6 +7,7 @@ from .notion import NotionConnector
 from .email import GmailConnector
 from .github import GitHubConnector
 from .dropbox import DropboxConnector
+from .jira import JiraConnector
 
 __all__ = [
     "BaseConnector",
@@ -14,4 +15,5 @@ __all__ = [
     "GmailConnector",
     "GitHubConnector",
     "DropboxConnector",
+    "JiraConnector",
 ]

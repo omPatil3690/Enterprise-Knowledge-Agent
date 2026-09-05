@@ -611,3 +611,46 @@ This document maintains a chronological record of all architectural decisions, c
 - [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md) (Updated)
 
 ---
+
+## Step 39: Jira Connector (Client, ADF Parser, OKF Bundle)
+- **Date:** 2026-09-05
+- **Time:** 10:59:01 IST
+- **Purpose:** Add Atlassian Jira as a full enterprise knowledge source with a REST v3 client, Atlassian Document Format (ADF) → semantic block normalization, a `BaseConnector`-conformant orchestrator, and end-to-end OKF v0.2 Knowledge Bundle generation.
+
+### Key Decisions & Rationale:
+1. **Jira REST v3 + Basic Auth**: `JiraClient` uses `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`; verifies via `GET /rest/api/3/myself`, discovers projects via `GET /rest/api/3/project`, and paginates issue search with JQL `startAt`/`maxResults` windows (resumable & idempotent).
+2. **ADF JSON → Semantic Blocks**: `parser.py` walks the recursive ADF node tree — text nodes fold with `strong`/`em`/`code` marks, mentions render as `@handle`, nested list items nest as `children`, code blocks capture `language`, tables become structured `DATABASE` blocks, and `rule` nodes become dividers. Unknown node types are skipped gracefully so one-off ADF nodes never crash ingestion.
+3. **Dual Discovery Paths**: `load_documents()` supports `project_keys` (specific projects), auto-discovery of all projects, an optional JQL filter, and `--include-projects` for project-level overview documents.
+4. **Rich Issue Metadata**: extracts issue type, status, priority, assignee, reporter, labels, components, plus created/updated timestamps into `extra` for recency scoring and dashboards.
+5. **No New Dependencies**: Everything uses `requests` + stdlib; `requirements.txt` unchanged.
+
+### Files Created / Modified:
+- [`backend/connectors/jira/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/client.py) (Created)
+- [`backend/connectors/jira/parser.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/parser.py) (Created)
+- [`backend/connectors/jira/connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/connector.py) (Created)
+- [`backend/connectors/jira/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/__init__.py) (Created)
+- [`backend/connectors/jira/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/tests/test_run_connector.py) (Created)
+- [`backend/connectors/jira/tests/test_run_okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/tests/test_run_okf.py) (Created)
+- [`backend/connectors/jira/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/jira/tests/README.md) (Created)
+- [`backend/connectors/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/__init__.py) (Updated exports)
+- [`DOCUMENTS.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/DOCUMENTS.md) (Updated Atlassian API references)
+- [`RESEARCH.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/RESEARCH.md) (Updated Jira research section)
+
+---
+
+## Step 40: Jira Live Connectivity Verification & `JIRA_URL` Pitfall Documentation
+- **Date:** 2026-09-05
+- **Time:** 13:13:24 IST
+- **Purpose:** Verify the Jira connector end-to-end against a live site and document the base-URL pitfall that silently breaks every API payload.
+
+### Key Decisions & Rationale:
+1. **Diagnosis**: A first live run returned HTTP 401 (`Client must be authenticated`) because the API token had not been refreshed. After token refresh the connection test passed, but `get_current_user()` / `list_projects()` failed with `Expecting value: line 1 column 1` — the endpoint returned the Atlassian Home HTML portal (HTTP 200, `content-type: text/html`) instead of REST JSON.
+2. **Root Cause**: `JIRA_URL` had been set to `https://home.atlassian.com/` (the generic account portal) instead of the actual Jira instance URL. Because the portal answers with an HTML page and status 200, `test_connection()` (which only checks the status code) can pass while every `response.json()` downstream throws.
+3. **Hardening**: Documented the constraint in `.env.example`, the Jira test-suite `README.md` guidance, and this changelog: `JIRA_URL` must point to the exact site the API token was issued for (e.g. `https://your-org.atlassian.net`), not `home.atlassian.com` or any other Atlassian product-less host.
+
+### Files Modified:
+- [`.env.example`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/.env.example) (Jira URL comments)
+- [`DOCUMENTS.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/DOCUMENTS.md) (Jira connection-check references)
+- [`RESEARCH.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/RESEARCH.md) (Jira credential/URL checklist)
+
+---
