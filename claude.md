@@ -532,4 +532,67 @@ This document maintains a chronological record of all architectural decisions, c
 
 ---
 
+## Step 34: Graph Entity & Relationship Models (`backend/models/graph.py`)
+- **Date:** 2026-09-04
+- **Time:** 14:38 IST
+- **Purpose:** Create the canonical graph data model layer for the GitHub knowledge graph stored in Neo4j. This is Step 1 of the Graph RAG pipeline (Models → Extractor → Neo4j Client → RAG).
 
+### Key Decisions & Rationale:
+1. **Two-enum registry**: `NodeLabel` (Repository, File, User, Team, Issue, PullRequest, Commit, Label) and `RelType` (12 relationship types) as single source of truth for all Neo4j labels and relationship type strings.
+2. **Stable namespaced node_id**: Every node has a `node_id` in format `github:<type>:<key>` used as the Neo4j MERGE key for idempotent upserts.
+3. **from_api() parsers**: Every typed node has a `@classmethod from_api()` that defensively parses the raw GitHub REST API JSON, including all nested objects (owner, head, base, reactions, verification, etc.).
+4. **Relationship-driven lists excluded from node properties**: `assignee_logins`, `label_names`, `added_files` etc. are kept on the typed node for extractor use but excluded from `to_graph_node()` — they become edges (:ASSIGNED_TO, :TAGGED_WITH, :MODIFIES) in the graph.
+5. **GitHubGraphBundle**: Container for all nodes and relationships from one repo pass. Provides `all_nodes()` and `summary()`.
+
+### Files Created:
+- [`backend/models/graph.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/graph.py) — **[NEW]**
+
+---
+
+## Step 35: GitHub Graph Extractor (`backend/graph/github_extractor.py`)
+- **Date:** 2026-09-04
+- **Time:** 15:30 IST
+- **Purpose:** Step 2 of Graph RAG pipeline. Extracts a `GitHubGraphBundle` from a live GitHub repository using the `GitHubClient`, producing all typed nodes and `GraphRelationship` edges ready for Neo4j ingestion.
+
+### Key Decisions & Rationale:
+1. **User deduplication via dict**: Users accumulate in a `Dict[str, UserNode]` keyed by `node_id`. Same user appearing as issue author, PR author, and commit author is stored only once.
+2. **Relationship-first design**: For each entity fetched, relationships are built inline at extraction time (CREATED, ASSIGNED_TO, REVIEWED, TAGGED_WITH, AUTHORED, CLOSES) rather than in a second pass.
+3. **`_CLOSES_RE` regex**: Parses `Closes #N`, `Fixes #N`, `Resolves #N` patterns from PR body text to produce `PullRequest -[:CLOSES]-> Issue` edges automatically.
+4. **`_EXT_LANGUAGE` map**: Enriches `FileNode.language` from file extension at extraction time (20+ extensions mapped).
+5. **`max_files` / `max_commits` caps**: Guards against hammering the API on large repos. Defaults: 1000 files, 200 commits.
+6. **Graceful skips**: Issues=0 PRs=0 on a clean repo → no crash. Teams always skipped with clear message (needs org-level token).
+7. **Two new `GitHubClient` methods added**: `list_pull_requests()` (uses `/pulls` endpoint for PR-specific fields: head/base SHA+ref, draft, requestedReviewers) and `list_commits()` (with `max_count` cap).
+
+### Live Test Result (omPatil3690/Enterprise-Knowledge-Agent):
+- 1 Repository, 2 Users, 59 Files, 31 Commits, 91 Relationships
+- Relationship types: `OWNED_BY ×1`, `CONTAINS ×59`, `AUTHORED ×31`
+
+### Files Created/Modified:
+- [`backend/graph/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/graph/__init__.py) — **[NEW]** package init
+- [`backend/graph/github_extractor.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/graph/github_extractor.py) — **[NEW]** extractor
+- [`backend/connectors/github/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/github/client.py) — **[MODIFIED]** added `list_pull_requests()` and `list_commits()`
+
+### Next Step:
+- Step 36: `backend/graph/neo4j_client.py` — take the `GitHubGraphBundle` and MERGE nodes/edges into Neo4j.
+
+## Step 36: Neo4j Graph Client (`backend/graph/neo4j_client.py`)
+- **Date:** 2026-09-07
+- **Time:** 19:50 IST
+- **Purpose:** Step 3 of Graph RAG pipeline. Takes a `GitHubGraphBundle` from the extractor and writes all nodes and relationships into Neo4j using idempotent MERGE queries.
+
+### Key Decisions & Rationale:
+1. **MERGE on node_id** — re-running ingestion updates existing nodes (`SET n += props`) instead of creating duplicates. Safe to run on every sync.
+2. **UNWIND batching** — sends one Cypher query per node-label group (not one query per node). Default batch size 500. Dramatically reduces round-trips on large repos.
+3. **Group by label/type** — Cypher cannot use dynamic labels or relationship types, so nodes are grouped by `NodeLabel` and relationships by `RelType`, with a pre-built template dict for each.
+4. **MATCH for relationship endpoints** — if either end of a relationship doesn't exist (e.g. CLOSES pointing to an issue outside the bundle), Neo4j silently skips that row.
+5. **`_sanitize_properties()`** — strips None, JSON-stringifies nested dicts, keeps list[primitive] as-is. Neo4j does not support nested dict properties.
+6. **`create_constraints()` + `create_indexes()`** — uniqueness constraint on `node_id` for every label, plus lookup indexes on `login`, `path`, `sha`, `number`, `full_name`.
+7. **`neo4j==6.3.0`** added to `requirements.txt`.
+8. **`__main__` block** — runnable directly: `python3 backend/graph/neo4j_client.py --repo owner/name --query`.
+
+### Files Created/Modified:
+- [`backend/graph/neo4j_client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/graph/neo4j_client.py) — **[NEW]**
+- [`requirements.txt`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/requirements.txt) — `neo4j==6.3.0` added
+
+### Next Step:
+- Step 37: End-to-end live test — run `neo4j_client.py` against a real Neo4j instance.

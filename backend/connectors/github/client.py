@@ -268,3 +268,93 @@ class GitHubClient:
                 break
 
         return issues
+
+    def list_pull_requests(
+        self,
+        owner: str,
+        repo: str,
+        state: str = "all",
+        per_page: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Lists pull requests for a repository using the dedicated /pulls endpoint.
+        Unlike the issues endpoint, this returns PR-specific fields:
+        head/base branch SHAs and refs, draft status, requested reviewers,
+        and merge metadata.
+
+        Note: diff statistics (additions, deletions, changed_files) are only
+        available on the full GET /pulls/{number} single-PR response, not here.
+
+        Args:
+            owner: GitHub owner.
+            repo: Repository name.
+            state: 'open', 'closed', or 'all'.
+            per_page: Max PRs per page (GitHub max is 100).
+
+        Returns:
+            List of pull request metadata dictionaries.
+        """
+        prs: List[Dict[str, Any]] = []
+        url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls"
+        params: Dict[str, Any] = {"state": state, "per_page": per_page}
+
+        while url:
+            response = self.session.get(url, params=params)
+            if response.status_code in (403, 429):
+                self._handle_rate_limit(response)
+                response = self.session.get(url, params=params)
+            if response.status_code != 200:
+                break
+            params = {}
+            data = response.json()
+            prs.extend(data)
+            url = self._next_page_url(response.headers.get("Link", ""))
+            if not data:
+                break
+
+        return prs
+
+    def list_commits(
+        self,
+        owner: str,
+        repo: str,
+        per_page: int = 100,
+        max_count: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """
+        Lists commits for a repository's default branch, newest first.
+        Capped at max_count to avoid hammering the API on large repos.
+
+        The list response includes commit metadata (message, author, committer,
+        parent SHAs, verification) but NOT per-file diffs. For file-level
+        MODIFIES relationships, individual /commits/{sha} calls are needed
+        (handled by the extractor separately if needed).
+
+        Args:
+            owner: GitHub owner.
+            repo: Repository name.
+            per_page: Page size (GitHub max is 100).
+            max_count: Hard cap on total commits fetched (default 500).
+
+        Returns:
+            List of commit metadata dictionaries, newest first.
+        """
+        commits: List[Dict[str, Any]] = []
+        url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits"
+        params: Dict[str, Any] = {"per_page": per_page}
+
+        while url and len(commits) < max_count:
+            response = self.session.get(url, params=params)
+            if response.status_code in (403, 429):
+                self._handle_rate_limit(response)
+                response = self.session.get(url, params=params)
+            if response.status_code != 200:
+                break
+            params = {}
+            data = response.json()
+            commits.extend(data)
+            url = self._next_page_url(response.headers.get("Link", ""))
+            if not data:
+                break
+
+        return commits[:max_count]

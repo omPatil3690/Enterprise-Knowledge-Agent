@@ -936,11 +936,10 @@ So we can maintain something like:
 Our metadata store
 
 | page_id | last_synced_at | source_updated_at |
-| :--- | :--- | :--- |
-| A | 10:00 | 09:55 |
-| B | 10:02 | 10:02 |
-| C | 10:03 | 09:40 |
-
+| :------ | :------------- | :---------------- |
+| A       | 10:00          | 09:55             |
+| B       | 10:02          | 10:02             |
+| C       | 10:03          | 09:40             |
 
 When synchronization runs:
 
@@ -1019,6 +1018,7 @@ Re-normalize
 ├── Update keyword index
 └── Update graph
 ```
+
 But don't implement synchronization yet
 
 For our current stage, I would keep the problem separated:
@@ -1099,6 +1099,7 @@ For your Enterprise Knowledge Agent, an email should become something closer to:
 "email": "alice@example.com"
 }
 ```
+
 ],
 
 "cc": [],
@@ -1137,18 +1138,21 @@ GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages
 Break it down:
 
 https://gmail.googleapis.com
+
 ```text
 │
 └── Gmail API server
 ```
 
 /gmail
+
 ```text
 │
 └── Gmail API
 ```
 
 /v1
+
 ```text
 │
 └── API version 1
@@ -1156,6 +1160,7 @@ https://gmail.googleapis.com
 
 /users/{userId}
 /messages
+
 ```text
 │
 └── resource being requested
@@ -1309,6 +1314,7 @@ Gmail API
 ▼
 Your mailbox
 ```
+
 /gmail
 
 This identifies the Gmail API service.
@@ -1490,6 +1496,7 @@ The response looks approximately like:
 "threadId": "xyz456"
 }
 ```
+
 ],
 "nextPageToken": "...",
 "resultSizeEstimate": 125
@@ -2416,6 +2423,7 @@ backend/
 │ ├── commits.py
 │ └── connector.py
 ```
+
 client.py
 
 Responsible only for communication with GitHub.
@@ -2560,16 +2568,16 @@ Every chunk should carry metadata such as:
 
 ```json
 {
-"source": "github",
-"repository": "omPatil3690/AI-Resume-Builder",
-"repository_id": "1144350074",
-"path": "backend/routes/auth.py",
-"branch": "main",
-"commit_sha": "...",
-"language": "python",
-"file_type": ".py",
-"visibility": "public",
-"owner": "omPatil3690"
+  "source": "github",
+  "repository": "omPatil3690/AI-Resume-Builder",
+  "repository_id": "1144350074",
+  "path": "backend/routes/auth.py",
+  "branch": "main",
+  "commit_sha": "...",
+  "language": "python",
+  "file_type": ".py",
+  "visibility": "public",
+  "owner": "omPatil3690"
 }
 ```
 
@@ -2817,6 +2825,7 @@ Last sync
 ↓
 Compare current state
 ↓
+
 ```text
 Changed files?
 │
@@ -2826,6 +2835,7 @@ Changed files?
 ↓
 Re-process
 ```
+
 ↓
 Re-embed
 ↓
@@ -2891,6 +2901,7 @@ Retriever filtering
 Phase 8 — Agent
 User query
 ↓
+
 ```text
 Planner
 │
@@ -2900,6 +2911,7 @@ Planner
 ↓
 Fusion
 ```
+
 ↓
 RBAC
 ↓
@@ -3406,6 +3418,7 @@ Graph
 Find:
 
 PR #42
+
 ```text
 │
 ├── modified → auth.py
@@ -3413,6 +3426,7 @@ PR #42
 ├── related issue → #38
 └── reviewed by → Bob
 ```
+
 Vector
 
 Retrieve the actual content:
@@ -3471,6 +3485,7 @@ Take:
 
 backend/auth.py
 Representation 1 — Vector database
+
 ```json
 {
 "id": "github:repo:auth.py:chunk-1",
@@ -3482,6 +3497,7 @@ Representation 1 — Vector database
 "language": "python"
 }
 ```
+
 }
 
 The text is what makes it useful for semantic retrieval.
@@ -3514,11 +3530,14 @@ github:file:payments-service:backend/auth.py
 Then:
 
 Vector DB
+
 ```text
 ────────────────────
 ```
+
 chunk_id
 github:file:payments-service:backend/auth.py
+
 ```text
 │
 │ same ID
@@ -3526,6 +3545,7 @@ github:file:payments-service:backend/auth.py
 Neo4j
 ────────────────────
 ```
+
 File {
 id: github:file:payments-service:backend/auth.py
 }
@@ -3587,6 +3607,7 @@ PR description
 Issue description
 PR review comments
 Step 3 — Combine
+
 ```text
 Query
 │
@@ -3768,20 +3789,20 @@ I'd therefore make your GitHub connector look like this:
 
 Think of it this way:
 
-| Question Type | Best Mechanism |
-| :--- | :--- |
-| What does this code do? | Vector RAG |
-| Where is JWT validation implemented? | Vector + Keyword |
-| What does PR #42 say? | Vector |
-| Who created PR #42? | Graph |
-| Who modified auth.py? | Graph |
-| Which team owns this repository? | Graph |
-| Which issues are related to this PR? | Graph |
-| Why was this code changed? | Vector + Graph |
-| Who changed it and why? | Vector + Graph |
-| What changed between two commits? | Git/commit diff + Vector |
-| Which developer modified payment code and also belongs to the owning team? | Graph |
-| What authentication code was changed in PR #42 and why? | Graph + Vector |
+| Question Type                                                              | Best Mechanism           |
+| :------------------------------------------------------------------------- | :----------------------- |
+| What does this code do?                                                    | Vector RAG               |
+| Where is JWT validation implemented?                                       | Vector + Keyword         |
+| What does PR #42 say?                                                      | Vector                   |
+| Who created PR #42?                                                        | Graph                    |
+| Who modified auth.py?                                                      | Graph                    |
+| Which team owns this repository?                                           | Graph                    |
+| Which issues are related to this PR?                                       | Graph                    |
+| Why was this code changed?                                                 | Vector + Graph           |
+| Who changed it and why?                                                    | Vector + Graph           |
+| What changed between two commits?                                          | Git/commit diff + Vector |
+| Which developer modified payment code and also belongs to the owning team? | Graph                    |
+| What authentication code was changed in PR #42 and why?                    | Graph + Vector           |
 
 In one sentence:
 
@@ -4996,3 +5017,75 @@ That is the approach I'd choose now.
 [1]: https://docs.github.com/en/rest/repos/repos?piVersion=2022-11-28&utm_source=chatgpt.com "REST API endpoints for repositories - GitHub Docs"
 [2]: https://docs.github.com/en/rest/repos/contents?utm_source=chatgpt.com "REST API endpoints for repository contents - GitHub Docs"
 [3]: https://docs.github.com/en/rest/pulls/pulls?utm_source=chatgpt.com "REST API endpoints for pull requests - GitHub Docs"
+
+---
+
+Example without Enum
+
+Imagine developer A writes:
+
+relationship = "AUTHORED"
+
+Developer B writes:
+
+relationship = "AUTHOR_OF"
+
+Developer C writes:
+
+relationship = "authored"
+
+Now your graph can accidentally contain:
+
+User ──AUTHORED──> Commit
+User ──AUTHOR_OF──> Commit
+User ──authored──> Commit
+
+Semantically, these might all mean the same thing, but Neo4j treats them as different relationship types.
+
+That's bad for Graph RAG.
+
+8. With Enum
+
+You establish:
+
+class RelType(str, Enum):
+AUTHORED = "AUTHORED"
+
+Then everyone uses:
+
+RelType.AUTHORED
+
+Therefore you get one canonical relationship:
+
+User ──AUTHORED──> Commit
+
+This is the main purpose of these enums in your project.
+
+---
+
+two enums together are effectively defining part of your canonical Neo4j graph schema:
+
+NodeLabel
+│
+├── Repository
+├── File
+├── User
+├── Team
+├── Issue
+├── PullRequest
+├── Commit
+└── Label
+
+RelType
+│
+├── CONTAINS
+├── OWNED_BY
+├── AUTHORED
+├── CREATED
+├── REVIEWED
+├── ...
+└── TAGGED_WITH
+
+That is why using Enum here is much better than scattering raw strings throughout the GitHub connector and Graph RAG code.
+
+---
