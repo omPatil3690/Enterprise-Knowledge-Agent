@@ -532,67 +532,112 @@ This document maintains a chronological record of all architectural decisions, c
 
 ---
 
-## Step 34: Graph Entity & Relationship Models (`backend/models/graph.py`)
-- **Date:** 2026-09-04
-- **Time:** 14:38 IST
-- **Purpose:** Create the canonical graph data model layer for the GitHub knowledge graph stored in Neo4j. This is Step 1 of the Graph RAG pipeline (Models → Extractor → Neo4j Client → RAG).
+## Step 32: Official Dropbox Python SDK Integration & Connectivity Verification
+- **Date:** 2026-09-01
+- **Time:** 13:30:25 IST
+- **Purpose:** Install and integrate the official `dropbox` Python SDK (v12.2.1) and implement connectivity test via `test_dropbox_auth.py`.
 
 ### Key Decisions & Rationale:
-1. **Two-enum registry**: `NodeLabel` (Repository, File, User, Team, Issue, PullRequest, Commit, Label) and `RelType` (12 relationship types) as single source of truth for all Neo4j labels and relationship type strings.
-2. **Stable namespaced node_id**: Every node has a `node_id` in format `github:<type>:<key>` used as the Neo4j MERGE key for idempotent upserts.
-3. **from_api() parsers**: Every typed node has a `@classmethod from_api()` that defensively parses the raw GitHub REST API JSON, including all nested objects (owner, head, base, reactions, verification, etc.).
-4. **Relationship-driven lists excluded from node properties**: `assignee_logins`, `label_names`, `added_files` etc. are kept on the typed node for extractor use but excluded from `to_graph_node()` — they become edges (:ASSIGNED_TO, :TAGGED_WITH, :MODIFIES) in the graph.
-5. **GitHubGraphBundle**: Container for all nodes and relationships from one repo pass. Provides `all_nodes()` and `summary()`.
+1. **Official SDK Integration**: Installed `dropbox==12.2.1` into virtual environment (`.venv`).
+2. **Authentication Verification**: Created `backend/connectors/dropbox/tests/test_dropbox_auth.py` verifying `users_get_current_account()` and folder listing.
+3. **Scope Diagnosis**: Verified live connection for account `Om Patil` (`ompatilseetara@gmail.com`) and identified missing `files.metadata.read` scope on the generated access token.
 
 ### Files Created:
-- [`backend/models/graph.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/graph.py) — **[NEW]**
+- [`backend/connectors/dropbox/tests/test_dropbox_auth.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_dropbox_auth.py)
 
 ---
 
-## Step 35: GitHub Graph Extractor (`backend/graph/github_extractor.py`)
-- **Date:** 2026-09-04
-- **Time:** 15:30 IST
-- **Purpose:** Step 2 of Graph RAG pipeline. Extracts a `GitHubGraphBundle` from a live GitHub repository using the `GitHubClient`, producing all typed nodes and `GraphRelationship` edges ready for Neo4j ingestion.
+## Step 33: Dropbox SDK Refactor & OKF v0.2 Knowledge Bundle Generation
+- **Date:** 2026-09-01
+- **Time:** 23:44:59 IST
+- **Purpose:** Refactor `DropboxClient` using the official `dropbox.Dropbox` Python SDK with auto-refresh token support, verify `BaseConnector` lifecycle, and generate live OKF v0.2 Knowledge Bundles.
 
 ### Key Decisions & Rationale:
-1. **User deduplication via dict**: Users accumulate in a `Dict[str, UserNode]` keyed by `node_id`. Same user appearing as issue author, PR author, and commit author is stored only once.
-2. **Relationship-first design**: For each entity fetched, relationships are built inline at extraction time (CREATED, ASSIGNED_TO, REVIEWED, TAGGED_WITH, AUTHORED, CLOSES) rather than in a second pass.
-3. **`_CLOSES_RE` regex**: Parses `Closes #N`, `Fixes #N`, `Resolves #N` patterns from PR body text to produce `PullRequest -[:CLOSES]-> Issue` edges automatically.
-4. **`_EXT_LANGUAGE` map**: Enriches `FileNode.language` from file extension at extraction time (20+ extensions mapped).
-5. **`max_files` / `max_commits` caps**: Guards against hammering the API on large repos. Defaults: 1000 files, 200 commits.
-6. **Graceful skips**: Issues=0 PRs=0 on a clean repo → no crash. Teams always skipped with clear message (needs org-level token).
-7. **Two new `GitHubClient` methods added**: `list_pull_requests()` (uses `/pulls` endpoint for PR-specific fields: head/base SHA+ref, draft, requestedReviewers) and `list_commits()` (with `max_count` cap).
+1. **SDK-Powered Client**: Upgraded `DropboxClient` to utilize `dropbox.Dropbox` with `app_key`, `app_secret`, and `oauth2_refresh_token` for automatic background token lifecycle management.
+2. **Interactive Refresh Token Helper**: Created `backend/connectors/dropbox/tests/get_refresh_token.py` using `DropboxOAuth2FlowNoRedirect` with `token_access_type='offline'`.
+3. **Live Ingestion Verification**: Ran `test_run_connector.py` and `test_run_okf.py` live against Dropbox account, ingesting 9 documents and generating `.okf.md`, `index.md`, and `log.md` files in `backend/connectors/dropbox/test_data/okf_bundle/`.
 
-### Live Test Result (omPatil3690/Enterprise-Knowledge-Agent):
-- 1 Repository, 2 Users, 59 Files, 31 Commits, 91 Relationships
-- Relationship types: `OWNED_BY ×1`, `CONTAINS ×59`, `AUTHORED ×31`
+### Files Created / Modified:
+- [`backend/connectors/dropbox/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/client.py) (Upgraded to official SDK)
+- [`backend/connectors/dropbox/tests/get_refresh_token.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/get_refresh_token.py) (Created)
+- [`backend/connectors/dropbox/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_connector.py) (Updated)
+- [`backend/connectors/dropbox/tests/test_run_okf.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_okf.py) (Updated)
 
-### Files Created/Modified:
-- [`backend/graph/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/graph/__init__.py) — **[NEW]** package init
-- [`backend/graph/github_extractor.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/graph/github_extractor.py) — **[NEW]** extractor
-- [`backend/connectors/github/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/github/client.py) — **[MODIFIED]** added `list_pull_requests()` and `list_commits()`
+---
 
-### Next Step:
-- Step 36: `backend/graph/neo4j_client.py` — take the `GitHubGraphBundle` and MERGE nodes/edges into Neo4j.
-
-## Step 36: Neo4j Graph Client (`backend/graph/neo4j_client.py`)
-- **Date:** 2026-09-07
-- **Time:** 19:50 IST
-- **Purpose:** Step 3 of Graph RAG pipeline. Takes a `GitHubGraphBundle` from the extractor and writes all nodes and relationships into Neo4j using idempotent MERGE queries.
+## Step 34: Dropbox Test Suite Documentation Update (`backend/connectors/dropbox/tests/README.md`)
+- **Date:** 2026-09-01
+- **Time:** 23:47:01 IST
+- **Purpose:** Update the Dropbox test suite documentation to reflect the official `dropbox` SDK usage, OAuth 2.0 refresh token helper, and test execution commands.
 
 ### Key Decisions & Rationale:
-1. **MERGE on node_id** — re-running ingestion updates existing nodes (`SET n += props`) instead of creating duplicates. Safe to run on every sync.
-2. **UNWIND batching** — sends one Cypher query per node-label group (not one query per node). Default batch size 500. Dramatically reduces round-trips on large repos.
-3. **Group by label/type** — Cypher cannot use dynamic labels or relationship types, so nodes are grouped by `NodeLabel` and relationships by `RelType`, with a pre-built template dict for each.
-4. **MATCH for relationship endpoints** — if either end of a relationship doesn't exist (e.g. CLOSES pointing to an issue outside the bundle), Neo4j silently skips that row.
-5. **`_sanitize_properties()`** — strips None, JSON-stringifies nested dicts, keeps list[primitive] as-is. Neo4j does not support nested dict properties.
-6. **`create_constraints()` + `create_indexes()`** — uniqueness constraint on `node_id` for every label, plus lookup indexes on `login`, `path`, `sha`, `number`, `full_name`.
-7. **`neo4j==6.3.0`** added to `requirements.txt`.
-8. **`__main__` block** — runnable directly: `python3 backend/graph/neo4j_client.py --repo owner/name --query`.
+1. **Documented SDK Test Scripts**: Added `test_dropbox_auth.py` and `get_refresh_token.py` to the testing matrix.
+2. **Updated Execution Reference**: Standardized CLI commands and output locations for `.okf.md` bundles.
 
-### Files Created/Modified:
-- [`backend/graph/neo4j_client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/graph/neo4j_client.py) — **[NEW]**
-- [`requirements.txt`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/requirements.txt) — `neo4j==6.3.0` added
+### Files Modified:
+- [`backend/connectors/dropbox/tests/README.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/README.md)
 
-### Next Step:
-- Step 37: End-to-end live test — run `neo4j_client.py` against a real Neo4j instance.
+---
+
+## Step 35: System-Wide Documentation Synchronization (`DOCUMENTS.md`, `NOTES.md`, `developer_setup.md`)
+- **Date:** 2026-09-02
+- **Time:** 00:07:30 IST
+- **Purpose:** Synchronize all documentation markdown files to ensure Dropbox connector developer URLs, pending OCR/binary notes, architecture diagrams, and environment variable references are 100% updated and consistent across the repository.
+
+### Key Decisions & Rationale:
+1. **`DOCUMENTS.md`**: Added Section 3 for Dropbox (App Console, OAuth 2.0 guide, Python SDK docs, API HTTP reference, and API Explorer).
+2. **`NOTES.md`**: Added Note #3 for handling future binary attachments (`.docx`, `.xlsx`, `.pdf`) and proprietary `.paper` documents for Dropbox.
+3. **`developer_setup.md`**: Updated data source diagrams, added dedicated Section 10 for Dropbox connector setup, and updated `.env` templates with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, and `DROPBOX_ACCESS_TOKEN`.
+
+### Files Modified:
+- [`DOCUMENTS.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/DOCUMENTS.md)
+- [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md)
+- [`developer_setup.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/developer_setup.md)
+
+---
+
+## Step 36: Binary Document Extractors Setup & Test Suite Cleanup
+- **Date:** 2026-09-02
+- **Time:** 09:32:44 IST
+- **Purpose:** Remove obsolete raw HTTP fetch test scripts from Dropbox test suite and install enterprise binary document parsing dependencies (`pypdf`, `python-docx`, `openpyxl`).
+
+### Key Decisions & Rationale:
+1. **Test Suite Hygiene**: Deleted `test_dropbox_fetch.py` and `test_dropbox_extraction.py` as `test_dropbox_auth.py` and `test_run_connector.py` fully supersede raw HTTP calls.
+2. **Binary Parsing Dependencies**: Installed `pypdf==6.16.2` (PDF text extraction), `python-docx==1.2.0` (Word document parsing), and `openpyxl==3.1.5` (Excel workbook/table extraction).
+3. **Requirements Synchronization**: Updated `requirements.txt`.
+
+### Files Modified / Deleted:
+- `backend/connectors/dropbox/tests/test_dropbox_fetch.py` (Deleted)
+- `backend/connectors/dropbox/tests/test_dropbox_extraction.py` (Deleted)
+- [`requirements.txt`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/requirements.txt) (Updated)
+
+---
+
+## Step 37: Reusable Binary Document Extractors & Live Dropbox Ingestion
+- **Date:** 2026-09-02
+- **Time:** 09:51:37 IST
+- **Purpose:** Implement universal binary document parsers for PDF, Word (.docx), and Excel (.xlsx), integrate them into the Dropbox connector pipeline, and verify live on user's real documents.
+
+### Key Decisions & Rationale:
+1. **Universal Extractors Package (`backend/parsers/`)**:
+   - `extract_pdf_blocks`: Extracts text per page into page headings and paragraphs using `pypdf`.
+   - `extract_docx_blocks`: Preserves document styles (Heading 1/2/3, Bullet Lists, Paragraphs) and converts Word tables into structured `ContentBlock(type=BlockType.DATABASE)` records with column headers using `python-docx`.
+   - `extract_xlsx_blocks`: Iterates across workbook worksheets and converts non-empty rows into structured `ContentBlock(type=BlockType.DATABASE)` records using `openpyxl`.
+2. **Connector & Model Integration**:
+   - Upgraded `DropboxClient.download_file()` to return `raw_bytes` along with metadata.
+   - Upgraded `DropboxFile` and `normalize_file_document()` to accept `raw_bytes` and seamlessly invoke `extract_document_blocks()`.
+3. **Live Verification & Full OKF Bundle Generation**:
+   - Ingested 19 items live from Dropbox account, including `complex_dummy_test_document.docx` (all 7 KPI/Trend/Risk tables & sections extracted) and `leetcode 75 questions (neetcode on yt).xlsx` (all 75 problem rows & notes extracted).
+   - Generated 19 complete `.okf.md` and `.okf.json` concepts in `backend/connectors/dropbox/test_data/okf_bundle/`.
+
+### Files Created / Modified:
+- [`backend/parsers/document_extractors.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/parsers/document_extractors.py) (Created)
+- [`backend/parsers/__init__.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/parsers/__init__.py) (Created)
+- [`backend/models/dropbox.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/dropbox.py) (Updated)
+- [`backend/connectors/dropbox/client.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/client.py) (Updated)
+- [`backend/connectors/dropbox/parser.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/parser.py) (Updated)
+- [`backend/connectors/dropbox/connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/connector.py) (Updated)
+- [`backend/connectors/dropbox/tests/test_run_connector.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/connectors/dropbox/tests/test_run_connector.py) (Updated)
+- [`NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/NOTES.md) (Updated)
+
+---

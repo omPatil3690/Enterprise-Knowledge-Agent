@@ -18,9 +18,14 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 
 # Ensure project root is in sys.path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPT_PATH = Path(__file__).resolve()
+current = SCRIPT_PATH.parent
+while current != current.parent:
+    if (current / "backend").exists():
+        if str(current) not in sys.path:
+            sys.path.insert(0, str(current))
+        break
+    current = current.parent
 
 load_dotenv(find_dotenv())
 
@@ -41,26 +46,24 @@ def sanitize_filename(name: str) -> str:
 
 
 def run_okf_bundle_generator(path: str = "", max_files: int = 200) -> None:
-    token = os.getenv("DROPBOX_TOKEN")
-
     print("\n" + "=" * 65)
     print("📦 DROPBOX CONNECTOR - OKF v0.2 KNOWLEDGE BUNDLE GENERATOR")
     print("=" * 65)
 
-    if not token:
-        print("❌ ERROR: DROPBOX_TOKEN is missing in your .env file.")
+    try:
+        connector = DropboxConnector(root_path=path, max_files=max_files)
+    except Exception as e:
+        print(f"❌ Configuration error: {e}")
         return
-
-    connector = DropboxConnector(token=token, root_path=path, max_files=max_files)
 
     print("📡 Connecting to Dropbox API...")
     if not connector.test_connection():
-        print("❌ Connection Failed. Check your DROPBOX_TOKEN in .env.")
+        print("❌ Connection Failed. Check your credentials in .env.")
         return
 
     account = connector.client.get_current_account()
     if account:
-        print(f"✅ Connection Authenticated as: {account.get('email')}")
+        print(f"✅ Connection Authenticated as: {account.get('display_name')} ({account.get('email')})")
     else:
         print("✅ Connection Authenticated!")
     print("-" * 65)

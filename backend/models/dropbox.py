@@ -58,9 +58,15 @@ class DropboxFile:
     entry_id: Optional[str] = None
     rev: Optional[str] = None
     content: Optional[str] = None             # Downloaded text content (if text file)
+    raw_bytes: Optional[bytes] = None
 
     @classmethod
-    def from_api(cls, entry: Dict[str, Any], content: Optional[str] = None) -> "DropboxFile":
+    def from_api(
+        cls,
+        entry: Dict[str, Any],
+        content: Optional[str] = None,
+        raw_bytes: Optional[bytes] = None,
+    ) -> "DropboxFile":
         path_lower = entry.get("path_lower") or entry.get("path_display") or entry.get("name", "file")
         name = entry.get("name") or path_lower.rsplit("/", 1)[-1]
         parent_path = path_lower.rsplit("/", 1)[0] if "/" in path_lower else ""
@@ -74,10 +80,14 @@ class DropboxFile:
             entry_id=entry.get("id"),
             rev=entry.get("rev"),
             content=content,
+            raw_bytes=raw_bytes,
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        if "raw_bytes" in d:
+            del d["raw_bytes"]  # Do not dump binary stream in JSON dict
+        return d
 
     def to_intermediate_document(self) -> Document:
         """Converts this canonical file into the system's universal intermediate Document."""
@@ -124,7 +134,25 @@ class DropboxFile:
                     text=f"Size: {self.size} bytes",
                 )
             )
-        if self.content and self.content.strip():
+
+        # 1. If raw_bytes are available, use binary document extractor (PDF, DOCX, XLSX)
+        if self.raw_bytes:
+            from backend.parsers.document_extractors import extract_document_blocks
+            extracted_blocks = extract_document_blocks(self.raw_bytes, self.name)
+            for idx, b in enumerate(extracted_blocks, 1):
+                b_type = BlockType.from_string(b.get("type", "paragraph"))
+                blocks.append(
+                    ContentBlock(
+                        id=b.get("block_id") or f"{self.path_lower}_b{idx}",
+                        type=b_type,
+                        text=b.get("text", ""),
+                        properties=b.get("properties", {}),
+                        columns=b.get("columns", []),
+                        rows=b.get("rows", []),
+                    )
+                )
+        # 2. Fallback to decoded plain text content
+        elif self.content and self.content.strip():
             blocks.append(
                 ContentBlock(
                     id=f"{self.path_lower}_content_heading",

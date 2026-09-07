@@ -143,9 +143,10 @@ class DropboxConnector(BaseConnector):
             if not is_text_file((meta.get("path_lower") or doc_id)):
                 print(f"⚠️ Skipping binary/non-text file: {doc_id}")
                 return None
-            downloaded = self.client.download_file(doc_id)
-            content = (downloaded or {}).get("content")
-            file_doc = DropboxFile.from_api(meta, content=content)
+            downloaded = self.client.download_file(doc_id) or {}
+            content = downloaded.get("content")
+            raw_bytes = downloaded.get("raw_bytes")
+            file_doc = DropboxFile.from_api(meta, content=content, raw_bytes=raw_bytes)
             return file_doc.to_intermediate_document()
         except Exception as e:
             print(f"⚠️ Error loading Dropbox resource {doc_id}: {e}")
@@ -189,8 +190,10 @@ class DropboxConnector(BaseConnector):
             if not path or not is_text_file(path):
                 continue
             try:
-                content = (self.client.download_file(path) or {}).get("content")
-                file_doc = DropboxFile.from_api(entry, content=content)
+                downloaded_file = self.client.download_file(path) or {}
+                content = downloaded_file.get("content")
+                raw_bytes = downloaded_file.get("raw_bytes")
+                file_doc = DropboxFile.from_api(entry, content=content, raw_bytes=raw_bytes)
                 documents.append(file_doc.to_intermediate_document())
                 downloaded += 1
             except Exception as e:
