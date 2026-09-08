@@ -2342,3 +2342,85 @@ App Key
 Your backend can then obtain/refresh short-lived access tokens when needed.
 
 The current Dropbox JavaScript SDK also explicitly supports access tokens, refresh tokens, client IDs, and client secrets.
+
+---
+
+# Jira Connector: From Issues to Knowledge
+
+## What is Jira as a knowledge source?
+
+Jira is the operational/task truth layer of an enterprise: every piece of work is an
+**issue** (bug, task, story, epic) scoped to a **project**. Issue descriptions use the
+Atlassian Document Format (ADF) — a JSON AST, not HTML or text — and must be parsed
+structurally.
+
+## Jira API model: discovery vs. retrieval
+
+- **Discovery** (`GET /rest/api/3/project`): list all projects visible to the token account.
+- **Search/Retrieval** (`GET /rest/api/3/search?jql=...&startAt=...` and
+  `GET /rest/api/3/issue/{key}`): JQL paging uses the `startAt`/`maxResults` window model
+  (10, 20, 30 …), not cursors, so retrieval is idempotent and resumable.
+
+## What to extract and preserve
+
+1. **Project-level metadata** — key + name define the work domain boundary.
+2. **Issue-level metadata** — key, summary, project, issue type, status, priority,
+   assignee, reporter, labels, components, created/updated timestamps.
+3. **Description structure** — the ADF JSON tree: headings, paragraphs (with `strong`/`em`/
+   `code` marks and mentions), bullet/numbered lists with nesting, code blocks, tables
+   (→ structured records), and rules (dividers).
+
+## ADF: parsing JSON, not HTML
+
+ADF nodes are recursive `{type, attrs, content}` objects. We walk the tree depth-first:
+- `text` inline nodes fold into concatenated strings; marks apply formatting that is
+  discarded for retrieval but preserved in Markdown where trivial.
+- `bulletList`/`orderedList`/`listItem` map to nested content blocks.
+- `table` → `tableHeader`/`tableCell` map to a `DATABASE` block with columns + rows.
+- `mention`/`emoji` render as readable inline text (`@handle`).
+- Unknown node types are skipped gracefully so one-off ADF nodes never crash ingestion.
+
+## Jira connector processing layers
+
+### 1. Project-level information
+Key + name establish the record; a lightweight project overview doc is generated on request.
+
+### 2. Issue-level information
+Summary, status, assignee, labels, and the full parsed ADF description become a document
+whose body carries retrievable operational detail.
+
+### 3. Preserve source information
+Every block is traceable to the issue key and `jira://issues/{key}` for citations.
+
+## Why separate fetch from normalization (again)
+
+The Jira client owns auth, JQL paging, and per-issue field selection; `parser.py` is a pure
+ADF→blocks converter, testable with static ADF fixture JSON.
+
+## Sync consideration
+
+`fields.updated` gives the delta signal for incremental synchronization —
+re-process an issue only when `updated > last_synced_time`.
+
+## Credential & URL checklist (pitfalls found during live testing)
+
+1. `JIRA_URL` must point to the **actual Jira site the API token was issued for**
+   (e.g. `https://your-org.atlassian.net`). Setting it to the generic account portal
+   `https://home.atlassian.com` is a silent killer: that host answers with the *Atlassian
+   Home* HTML page at HTTP 200, so `test_connection()` passes while every `response.json()`
+   call throws `Expecting value: line 1 column 1`.
+2. `JIRA_USERNAME` must be the exact account e-mail linked to the API token, not an
+   employee ID or display name.
+3. An expired/revoked API token yields HTTP 401 `Client must be authenticated` on
+   `/rest/api/3/myself` — regenerate at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
+4. The connection test (`GET /rest/api/3/myself`) only checks the HTTP status code.
+   Guard against HTML/portal responses by validating `Content-Type: application/json`
+   when the test is used to gate downstream ingestion.
+
+### In one sentence
+
+**Jira becomes a task knowledge source where projects act as domains and issues as
+documents — descriptions parsed from ADF keep nested structure and tables so operational
+knowledge stays retrievable.**
+
+---
