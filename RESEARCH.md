@@ -892,6 +892,7 @@ We ultimately need to synchronize the entire set of Notion pages that our integr
 
 The architecture becomes:
 
+```text
                     Notion Workspace
                           │
                           ▼
@@ -909,6 +910,7 @@ The architecture becomes:
                     Normalize
                           ▼
                     Knowledge Store
+```
 
 The important part: synchronization
 
@@ -933,14 +935,15 @@ So we can maintain something like:
 
 Our metadata store
 
-## page_id last_synced_at source_updated_at
-
-A 10:00 09:55
-B 10:02 10:02
-C 10:03 09:40
+| page_id | last_synced_at | source_updated_at |
+| :------ | :------------- | :---------------- |
+| A       | 10:00          | 09:55             |
+| B       | 10:02          | 10:02             |
+| C       | 10:03          | 09:40             |
 
 When synchronization runs:
 
+```text
 Notion
 │
 ▼
@@ -952,6 +955,7 @@ Compare page metadata
 ├── New → process
 ├── Modified → process again
 └── Unchanged → skip
+```
 
 For example:
 
@@ -1001,6 +1005,7 @@ may no longer be valid.
 
 So eventually a modification triggers something like:
 
+```text
 Page modified
 │
 ▼
@@ -1012,6 +1017,8 @@ Re-normalize
 ├── Update vector index
 ├── Update keyword index
 └── Update graph
+```
+
 But don't implement synchronization yet
 
 For our current stage, I would keep the problem separated:
@@ -1042,6 +1049,7 @@ So yes, your understanding is correct: the final connector is a synchronization 
 
 ---
 
+```text
                     Email Connector
                           │
              ┌────────────┴────────────┐
@@ -1061,6 +1069,7 @@ So yes, your understanding is correct: the final connector is a synchronization 
               ▼           ▼           ▼
            Vector       Keyword      Graph
              DB           DB           DB
+```
 
 ---
 
@@ -1071,6 +1080,7 @@ body
 
 For your Enterprise Knowledge Agent, an email should become something closer to:
 
+```json
 {
 "id": "provider-specific-id",
 "source": "gmail",
@@ -1088,6 +1098,8 @@ For your Enterprise Knowledge Agent, an email should become something closer to:
 "name": "Alice",
 "email": "alice@example.com"
 }
+```
+
 ],
 
 "cc": [],
@@ -1126,21 +1138,33 @@ GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages
 Break it down:
 
 https://gmail.googleapis.com
+
+```text
 │
 └── Gmail API server
+```
 
 /gmail
+
+```text
 │
 └── Gmail API
+```
 
 /v1
+
+```text
 │
 └── API version 1
+```
 
 /users/{userId}
 /messages
+
+```text
 │
 └── resource being requested
+```
 
 So in plain English:
 
@@ -1212,6 +1236,7 @@ If they completely changed the behavior of the existing endpoint, your applicati
 
 Instead, API versioning allows:
 
+```text
                   Google API
                      │
             ┌────────┴────────┐
@@ -1219,6 +1244,7 @@ Instead, API versioning allows:
           v1 API            v2 API
             │                 │
        Old applications    New applications
+```
 
 The old contract can remain available while newer clients use the new contract.
 
@@ -1275,6 +1301,7 @@ Your Python program sends an HTTP request to this server.
 
 Conceptually:
 
+```text
 Your Python program
 │
 │ HTTPS request
@@ -1286,6 +1313,8 @@ Gmail API
 │
 ▼
 Your mailbox
+```
+
 /gmail
 
 This identifies the Gmail API service.
@@ -1349,7 +1378,9 @@ For our application:
 
 The API then understands:
 
-me → authenticated Gmail account 7. What are query parameters?
+me → authenticated Gmail account
+
+## 7. What are query parameters?
 
 You also saw:
 
@@ -1379,11 +1410,15 @@ You can have multiple:
 
 Conceptually:
 
+```text
 Endpoint
 │
 ├── Path parameters
 │
-└── Query parameters 8. Why does Gmail have q?
+└── Query parameters
+```
+
+## 8. Why does Gmail have q?
 
 This one is particularly useful for our connector.
 
@@ -1407,11 +1442,13 @@ q=from:alice@example.com after:2026/08/01
 
 So our connector can do:
 
+```python
 service.users().messages().list(
 userId="me",
 q="after:2026/08/01",
 maxResults=100
 )
+```
 
 instead of downloading everything.
 
@@ -1433,16 +1470,21 @@ Give me at most 5 messages in this response.
 
 That's what our test code is doing:
 
+```python
 messages().list(
 userId="me",
 labelIds=["INBOX"],
 maxResults=5
-) 10. But why does Gmail return only IDs?
+)
+```
+
+## 10. But why does Gmail return only IDs?
 
 This is a very important API design decision.
 
 The response looks approximately like:
 
+```json
 {
 "messages": [
 {
@@ -1453,6 +1495,8 @@ The response looks approximately like:
 "id": "def456",
 "threadId": "xyz456"
 }
+```
+
 ],
 "nextPageToken": "...",
 "resultSizeEstimate": 125
@@ -1530,6 +1574,7 @@ and so on.
 
 Conceptually:
 
+```text
 messages.list()
 │
 ▼
@@ -1550,6 +1595,7 @@ nextPageToken
 │
 ▼
 ...
+```
 
 This is called pagination.
 
@@ -1574,6 +1620,7 @@ is appropriate.
 
 Think of OAuth scopes as permissions:
 
+```text
 Application
 │
 ├── gmail.readonly
@@ -1584,6 +1631,7 @@ Application
 │
 └── mail.google.com
 └── Broad Gmail access
+```
 
 This is directly relevant to your Enterprise Knowledge Agent's RBAC/security architecture. Your system should request the minimum provider permissions necessary.
 
@@ -1605,6 +1653,7 @@ That's not the same thing as:
 
 They are independent.
 
+```text
 google-api-python-client
 │
 └── Python client library version
@@ -1612,6 +1661,7 @@ google-api-python-client
 Gmail API
 │
 └── /v1/ API version
+```
 
 Your Python library might be updated:
 
@@ -1619,7 +1669,9 @@ google-api-python-client 2.x → 3.x
 
 while you're still using:
 
-Gmail API v1 14. You'll see this everywhere
+Gmail API v1
+
+## 14. You'll see this everywhere
 
 Once you start building connectors, you'll notice this pattern.
 
@@ -1652,6 +1704,7 @@ So API versioning is a fundamental REST/API design concept, not something specif
 
 Our Gmail connector will eventually make requests like:
 
+```text
 Authentication
 │
 ▼
@@ -1674,6 +1727,7 @@ EmailDocument
 │
 ▼
 OKF
+```
 
 And the nice thing is that you're now seeing why each part exists, rather than treating the Gmail Python SDK as a black box.
 
