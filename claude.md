@@ -2176,9 +2176,184 @@ This document maintains a chronological record of all architectural decisions, c
 - [`scripts/verify_threads.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/verify_threads.py) (Created)
 - [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
 
+---
 
+## Step 91: Global Catalog Aggregation, Map-First Progressive Disclosure, LLM-Assisted Confidence Scoring, and 10-Turn Planning
+- **Date:** 2026-09-26
+- **Time:** 10:25 IST
+- **Purpose:** Implemented cross-connector global catalog aggregation and Map-First Progressive Disclosure exploration for the Enterprise Knowledge Agent. Provides a central `global_index.md` and timestamped `global_log.md`, a high-priority `catalog_discovery` tool, LLM-assisted catalog ranking with confidence scoring (`0.0`–`1.0`), calibrated `EvidenceEvaluator` reflection logic, and expanded 10-turn planning budget.
+- **Changes Made:**
+  1. **Global Catalog Manager ([`backend/ingestion/catalog_aggregator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/ingestion/catalog_aggregator.py)):**
+     - Created `GlobalCatalogManager`, `CatalogEntry`, and `CatalogLogEvent`.
+     - Ingests concepts across all 6 connectors (GitHub, Jira, Notion, Dropbox, Gmail, Confluence) and automatically extracts business domains (`Payments & Checkout`, `Infrastructure & Disaster Recovery`, `Security & Cryptography`, etc.), key entities (Jira keys, PR numbers, API endpoints, usernames), allowed roles, trust tiers, and status.
+     - Serializes topological Markdown representations: `generate_global_index_markdown()` and audit-ready `generate_global_log_markdown()` with microsecond/second ISO-8601 UTC timestamps.
+     - Supports directory-based saving via `save_to_disk()`.
+     - Enforces database-level RBAC role expansion via `RoleHierarchy.expand_roles()` in `get_entries_for_roles()`.
+  2. **LLM-Assisted Catalog Retriever ([`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py)):**
+     - Implemented `CatalogRetriever` with two-stage matching:
+       - **Stage 1 (RBAC & Candidate Filtering)**: Filters documents by user roles and scores candidates using lexical/entity overlap.
+       - **Stage 2 (LLM Catalog Analysis & Scoring)**: Evaluates candidates against query context, assigns calibrated confidence scores (`0.0` to `1.0`), and emits recommended specialized retrieval tools (`resource_lookup`, `github_entity_search`, `graph_traversal`, `keyword_search`) with targeted argument payloads.
+     - Included deterministic heuristic fallbacks when LLM responses are offline or unparseable.
+  3. **Tool Registry & LangChain Tool Suites ([`backend/agent/tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tools.py) & [`backend/agent/langchain_tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langchain_tools.py)):**
+     - Registered `catalog_discovery` as the primary first-priority tool in `create_default_tool_registry()`.
+     - Added `CatalogDiscoveryInput` and `catalog_discovery` to `create_langchain_tools()` (expanding standard tool suite to 7 tools).
+  4. **LangGraph Planner & Tool Execution ([`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py)):**
+     - Expanded default `max_turns` budget from 5/6 to `10`.
+     - Updated `REASONER_SYSTEM_PROMPT` to prioritize `catalog_discovery` first before issuing deep tool calls.
+     - Updated `_tool_node` to unpack `catalog_discovery` manifests into structured chunks tagged with `is_catalog: True`, preserving confidence scores and tool guidance.
+  5. **Evidence Evaluator Calibration ([`backend/evaluation/evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/evaluator.py)):**
+     - Updated `SYSTEM_PROMPT` and `_parse_evaluation` / `_heuristic_fallback` to distinguish between catalog metadata summaries and deep document content.
+     - If retrieved evidence chunks only contain catalog summaries (`is_catalog: True` / `[CATALOG DISCOVERY SUMMARY]`), the evaluator enforces `evidence_sufficient = False` and `recommended_action = "RETRIEVE_MORE"` with the recommended tool until actual document bodies are retrieved.
+  6. **Live E2E Testing Script ([`scripts/run_e2e_live.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/run_e2e_live.py)):**
+     - Updated CLI `--max-turns` argument default to `10`.
+     - Wired `GlobalCatalogManager` and `CatalogRetriever` into `setup_live_pipeline()`, generating `data/global_index.md` and `data/global_log.md` on startup.
+  7. **Unit Tests & Verification Scripts:**
+     - Created [`backend/retrieval/tests/test_catalog_retriever.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/tests/test_catalog_retriever.py) (5 tests covering schema extraction, ISO UTC timestamps, RBAC pre-filtering, LLM confidence scoring, and heuristic fallbacks).
+     - Created [`backend/agent/tests/test_catalog_navigation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tests/test_catalog_navigation.py) (2 tests covering Map-First Turn 1 discovery, Evaluator reflection on catalog summaries, Turn 2 deep retrieval, 10-turn budget, and grounded answer synthesis).
+     - Created [`scripts/verify_catalog_navigation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/verify_catalog_navigation.py) demonstrating the complete 4-stage Map-First workflow across multi-connector topologies.
+     - Updated [`backend/retrieval/tests/test_entity_graph.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/tests/test_entity_graph.py) and [`backend/agent/tests/test_langgraph_agent.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tests/test_langgraph_agent.py) for the expanded 7-tool LangChain suite.
+     - Verified 100% test pass rate across all 117 unit tests in the pytest suite (`.venv/bin/pytest backend/ingestion/tests backend/storage/tests backend/retrieval/tests backend/ranking/tests backend/security/tests backend/evaluation/tests backend/agent/tests`).
 
+### Files Created / Modified:
+- [`backend/ingestion/catalog_aggregator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/ingestion/catalog_aggregator.py) (Created)
+- [`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py) (Created)
+- [`backend/agent/tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tools.py) (Modified)
+- [`backend/agent/langchain_tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langchain_tools.py) (Modified)
+- [`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py) (Modified)
+- [`backend/evaluation/evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/evaluator.py) (Modified)
+- [`scripts/run_e2e_live.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/run_e2e_live.py) (Modified)
+- [`backend/retrieval/tests/test_catalog_retriever.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/tests/test_catalog_retriever.py) (Created)
+- [`backend/agent/tests/test_catalog_navigation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tests/test_catalog_navigation.py) (Created)
+- [`backend/retrieval/tests/test_entity_graph.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/tests/test_entity_graph.py) (Modified)
+- [`backend/agent/tests/test_langgraph_agent.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tests/test_langgraph_agent.py) (Modified)
+- [`scripts/verify_catalog_navigation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/verify_catalog_navigation.py) (Created)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
 
+---
 
+## Step 92: Multi-Turn Conversation History Isolation, Catalog Argument Disambiguation, and Hybrid Search Prompt Alignment
+- **Date:** 2026-09-26
+- **Time:** 11:13 IST
+- **Purpose:** Fixed multi-turn context bleed in `AnswerGenerator`, resolved collision of `resource_id` tool arguments across non-Jira documents in `CatalogRetriever`, and aligned `hybrid_search` tool recommendations in catalog and evaluator prompts.
+- **Changes Made:**
+  1. **Answer Generator Multi-Turn Isolation ([`backend/generation/answer_generator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/generation/answer_generator.py)):**
+     - Fixed message formatting in `generate_answer()`: previously only `USER` messages were extracted without matching `ASSISTANT` messages, causing the LLM to perceive multiple open questions and re-answer previous turns.
+     - Formatted `conversation_history` as paired `USER`/`ASSISTANT` dialog turns and added explicit prompt instructions to answer *only* the current active inquiry.
+  2. **Catalog Tool Argument Disambiguation ([`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py)):**
+     - Fixed `_infer_default_arguments()`: restricted Jira key extraction to actual Jira issue records. Non-Jira records (Notion, Dropbox, Gmail, Confluence) now use their unique `resource_uri` or document title to prevent duplicate `resource_lookup({"resource_id": "PAY-928"})` calls.
+     - Added recommended arguments to `summary_lines` rendered in `discover()`.
+  3. **Hybrid Search Alignment ([`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py) & [`backend/evaluation/evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/evaluator.py)):**
+     - Added `hybrid_search` explicitly into `CATALOG_REASONER_PROMPT` and `EvidenceEvaluator.SYSTEM_PROMPT` for multi-modal cross-cutting queries.
+  4. Verified all 117 tests pass with 100% pass rate.
 
+### Files Created / Modified:
+- [`backend/generation/answer_generator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/generation/answer_generator.py) (Modified)
+- [`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py) (Modified)
+- [`backend/evaluation/evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/evaluator.py) (Modified)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
+
+---
+
+## Step 93: Expanded Multi-Connector Sample Corpus (18 Distinct Documents Across 6 Connectors)
+- **Date:** 2026-09-26
+- **Time:** 11:24 IST
+- **Purpose:** Added 12 new, distinct sample enterprise documents across all 6 connectors (GitHub, Jira, Notion, Dropbox, Gmail, Confluence) to `scripts/run_e2e_live.py`, expanding the test corpus from 6 to 18 documents with unique architectures, operational SOPs, and security policies.
+- **Corpus Breakdown (3 distinct documents per connector):**
+  1. **GitHub:**
+     - Payments API Specification & Idempotency Guide (`https://github.com/company/payments/docs/api.md`)
+     - Kubernetes Ingress & Cert-Manager Let's Encrypt TLS Configuration (`https://github.com/company/infra-k8s/blob/main/ingress/cert-manager-production.yaml`)
+     - OAuth 2.0 PKCE Authorization Server & Token Exchange Specification (`https://github.com/company/auth-service/docs/oauth2-pkce-spec.md`)
+  2. **Jira:**
+     - PAY-928: 3DS Authentication Timeout in Checkout Flow (`https://jira.company.com/browse/PAY-928`)
+     - SEC-1104: Zero-Trust Cloudflare Access Tunnel & SSH Bastion Migration (`https://jira.company.com/browse/SEC-1104`)
+     - DATA-782: Real-Time Clickstream Analytics Pipeline using Flink and Iceberg (`https://jira.company.com/browse/DATA-782`)
+  3. **Notion:**
+     - CISO Master KMS Encryption & Vault Infrastructure [TOP SECRET] (`https://notion.company.com/vault-kms-prod`)
+     - New Engineer Workstation Setup & macOS Security Hardening Guide (`https://notion.company.com/it/engineer-workstation-onboarding`)
+     - Internal AI Governance & LLM Data Protection Policy (v2.1) (`https://notion.company.com/legal/ai-governance-policy`)
+  4. **Dropbox:**
+     - Disaster Recovery & Database Failover Runbook (`https://dropbox.company.com/engineering/runbooks/dr_failover_v3.docx`)
+     - OpenSearch 12-Node Production Cluster Reindexing & Zero-Downtime Migration SOP (`https://dropbox.company.com/engineering/runbooks/opensearch_reindex_sop_2026.pdf`)
+     - Q3 2026 Cloud Infrastructure FinOps Audit & AWS/GCP Cost Reduction Report (`https://dropbox.company.com/finance/finops/q3_2026_cloud_cost_audit.xlsx`)
+  5. **Gmail:**
+     - [POST-MORTEM] 2026-09-20 Checkout 3DS Latency Spike (`gmail://thread/18a99bb88cc77`)
+     - [SECURITY ADVISORY] CVE-2024-45678: Mandatory YubiKey 5 Series Firmware Patching (`gmail://thread/sec_alert_yubikey_2026`)
+     - [TECH ANNOUNCEMENT] Core Banking Services Migrating from REST/JSON to gRPC & Protobuf (`gmail://thread/arch_grpc_migration_2026`)
+  6. **Confluence:**
+     - RFC-402: Distributed Event Ingestion & Kafka Topic Architecture (`https://confluence.company.com/display/ARCH/RFC-402`)
+     - ADR-088: PgBouncer Connection Pooling Strategy & Transaction Mode Standards (`https://confluence.company.com/display/ARCH/ADR-088`)
+     - Engineering Strategy: Multi-Region Active-Active Disaster Recovery Architecture (`https://confluence.company.com/display/SRE/Multi-Region-DR-Strategy`)
+- **Automated Live Test Cases:**
+  - Expanded `run_automated_live_tests()` with new queries covering OpenSearch zero-downtime reindexing, Kubernetes Cert-Manager TLS ingress, and Flink streaming latency.
+- **Verification:**
+  - All 18 documents validated for unique titles, URLs, tags, and RBAC permissions.
+  - 100% pass rate across 117 unit tests in the pytest test suite.
+
+### Files Created / Modified:
+- [`scripts/run_e2e_live.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/run_e2e_live.py) (Modified)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
+
+---
+
+## Step 94: Catalog Multi-Line Summary Enrichment, Robust Token Overlap Scoring, and Chunk Tool Provenance
+- **Date:** 2026-09-26
+- **Time:** 11:49 IST
+- **Purpose:** Resolved repeated query failure where catalog discovery missed documents whose keywords existed in operational steps/body rather than title. Added explicit tool provenance tagging (`retrieved_by_tool`) across chunks and citations, and isolated active-turn tool logging in multi-turn interactive REPL.
+- **Root Cause & Fixes:**
+  1. **Enriched Catalog Summary Extraction ([`backend/ingestion/catalog_aggregator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/ingestion/catalog_aggregator.py)):**
+     - Previously `summary` extracted only line 1 (`# Disaster Recovery SOP (v3.2)`), dropping all operational steps, timeout thresholds (`60s`), and failover instructions.
+     - Updated `add_concept()` to extract multi-line enriched summaries (up to 320 chars) preserving operational procedures and technical actions.
+     - Expanded `_extract_key_entities()` to extract technical tools, CVEs, RFCs, ADRs, endpoints, and status keywords (`60s`, `unresponsive`, `patronictl`, `PgBouncer`, `failover`, `reindex`, `ClusterIssuer`, etc.).
+  2. **Robust Lexical & Stem Overlap Scoring ([`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py)):**
+     - Updated `_score_candidates()` to compute multi-tier token overlap across `title` (3.0), `summary` (2.0), `domain` (1.0), `resource_uri` (2.0), `key_entities` (4.0), and whole-phrase matches (8.0) with stopword filtering.
+  3. **Chunk & Citation Tool Provenance ([`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py), [`backend/generation/context_builder.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/generation/context_builder.py), [`scripts/run_e2e_live.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/run_e2e_live.py)):**
+     - Tagged every retrieved chunk in `_tool_node` with `chunk_item["retrieved_by_tool"] = tool_name`.
+     - Carried `retrieved_by_tool` into citation records (`citation["tool"] = ...`).
+     - Formatted interactive REPL and automated test logs to display `[Tool: <tool_name>]` beside each retrieved chunk and citation (e.g. `[1] Disaster Recovery Runbook (DROPBOX) [via resource_lookup] -> https://...`).
+     - Fixed `run()` tool calls logging in multi-turn chat to report only the tools executed during the *active* query turn rather than accumulating all historical turns.
+- **Verification:**
+  - Validated `CatalogRetriever.discover("what is primary is unresponsive for 60s")` successfully maps to `Disaster Recovery Runbook` (`Score: 0.95`, Tool: `resource_lookup`).
+  - Verified with [`scripts/verify_catalog_navigation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/verify_catalog_navigation.py).
+  - 100% pass rate across all 117 unit tests in pytest test suite.
+
+### Files Created / Modified:
+- [`backend/ingestion/catalog_aggregator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/ingestion/catalog_aggregator.py) (Modified)
+- [`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py) (Modified)
+- [`backend/generation/context_builder.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/generation/context_builder.py) (Modified)
+- [`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py) (Modified)
+- [`scripts/run_e2e_live.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/scripts/run_e2e_live.py) (Modified)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
+
+---
+
+## Step 95: Evaluation Parser Robustness, Search Parameter Schema Clarification, and Direct Answering for Meta/General Queries
+- **Date:** 2026-09-26
+- **Time:** 12:28 IST
+- **Purpose:** Resolved `ChunkRelevance` evaluation parser exception on unexpected LLM JSON keys, removed hallucinated `resource_type`/`source` filters from LLM search tool calls, and enabled direct answering for general knowledge & meta-conversational queries without tool invocation.
+- **Root Cause & Fixes:**
+  1. **Evaluation Data Model Robustness ([`backend/models/evaluation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/evaluation.py)):**
+     - LLMs occasionally return extra JSON fields in chunk evaluations (such as `"is_sufficient": false` inside individual chunk objects). Because `ChunkRelevance` is a Python dataclass, unpacking `**kwargs` with unrecognized keys caused a `TypeError: ChunkRelevance.__init__() got an unexpected keyword argument 'is_sufficient'`.
+     - Added `ChunkRelevance.from_dict()` with strict key whitelisting (`{"chunk_id", "score", "is_relevant", "reason"}`) to gracefully drop unexpected extra fields without crashing the JSON parser.
+     - Updated `EvaluationResult.from_dict()` to use `ChunkRelevance.from_dict()`.
+     - Added unit test `test_07_extra_fields_in_chunk_evaluations_tolerated` in [`backend/evaluation/tests/test_evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/tests/test_evaluator.py).
+  2. **Search Tool Parameter Schema Clarification ([`backend/agent/tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tools.py) & [`backend/agent/langchain_tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langchain_tools.py)):**
+     - Small LLMs frequently hallucinated search filters like `resource_type: "repository"` or `source: "github"` when searching for runbooks or issues, which accidentally filtered out relevant documents from Dropbox, Notion, and Gmail.
+     - Updated tool parameter descriptions across `hybrid_search`, `semantic_search`, and `keyword_search` to explicitly instruct the model: *"DO NOT set or guess this parameter unless the user EXPLICITLY requested a specific platform in their query. Omit or leave empty to search all platforms (RECOMMENDED)."*
+     - Fixed `HybridSearchInput` and `KeywordSearchInput` schemas to declare all 6 supported platforms (`github`, `jira`, `notion`, `dropbox`, `gmail`, `confluence`).
+  3. **Direct Answering for Meta & General Knowledge Queries ([`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py)):**
+     - Updated `REASONER_SYSTEM_PROMPT` with clear guidance on query categories:
+       - **Direct Answers (No Tools):** Meta-conversational questions (*"what was the last question I asked?"*, *"summarize our chat"*) and general programming/conceptual questions (*"explain how quicksort works"*, *"what is OAuth PKCE conceptually?"*) are answered directly from internal model knowledge and conversation history without calling any enterprise retrieval tools.
+       - **Enterprise Retrieval (Use Tools):** Enterprise-specific inquiries (runbooks, internal repos, tickets, proprietary architectures, company policies) use Map-First `catalog_discovery` and targeted lookups.
+     - Updated `_generator_node` in `langgraph_planner.py`: when the Reasoner generates a direct text answer without calling tools, `state["answer"]` is preserved and `citations = []` is set without invoking `AnswerGenerator` on stale chunks from previous turns.
+- **Verification:**
+  - All 7 evaluator tests in `test_evaluator.py` pass cleanly.
+  - 100% pass rate across the full 118-test pytest suite (`.venv/bin/pytest backend/ingestion/tests backend/storage/tests backend/retrieval/tests backend/ranking/tests backend/security/tests backend/evaluation/tests backend/agent/tests`).
+
+### Files Created / Modified:
+- [`backend/models/evaluation.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/models/evaluation.py) (Modified)
+- [`backend/agent/tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tools.py) (Modified)
+- [`backend/agent/langchain_tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langchain_tools.py) (Modified)
+- [`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py) (Modified)
+- [`backend/evaluation/tests/test_evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/tests/test_evaluator.py) (Modified)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
 

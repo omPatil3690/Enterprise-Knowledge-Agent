@@ -49,6 +49,7 @@ class ContextBuilder:
 
             context_lines.append(f"{header}\n{text}\n")
 
+            tool = chunk.get("retrieved_by_tool") or chunk.get("tool") or ""
             citations.append({
                 "id": str(idx),
                 "index": str(idx),
@@ -58,6 +59,7 @@ class ContextBuilder:
                 "url": url,
                 "path": path_str,
                 "chunk_id": chunk.get("chunk_id", ""),
+                "tool": tool,
             })
 
         return "\n".join(context_lines).strip(), citations
