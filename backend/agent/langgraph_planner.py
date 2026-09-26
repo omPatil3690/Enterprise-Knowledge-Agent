@@ -175,15 +175,17 @@ Guidelines for Tool Selection:
         "Guidelines for Execution:\n"
         "1. Direct Answers (NO Tools Needed):\n"
         "   - Meta-Conversational Queries: If the user asks about the conversation itself (e.g. 'what was the last question I asked?', "
-        "     'what did we discuss earlier?', 'summarize our chat', 'repeat your previous answer'), answer DIRECTLY from the conversation "
+        "     'what did we discuss earlier?', 'summarize our chat', 'repeat your previous answer', 'who are you?'), answer DIRECTLY from the conversation "
         "     history without calling any tools.\n"
-        "   - General Knowledge & Concept Explanations: If the user asks general conceptual questions, programming principles, math, or "
-        "     greetings (e.g. 'explain how quicksort works', 'what is OAuth PKCE conceptually?', 'hello'), answer DIRECTLY from your general "
-        "     knowledge without calling tools, unless they ask for internal company runbooks, repos, or tickets.\n"
+        "   - General Knowledge & Concept Explanations: If the user asks general conceptual questions, programming principles, definitions, or "
+        "     math (e.g. 'what is the meaning of authentication?', 'explain how quicksort works', 'what is OAuth PKCE conceptually?', 'hello'), "
+        "     answer DIRECTLY from your general technical knowledge without calling enterprise tools. Do NOT search internal documents unless the user explicitly asks for proprietary company implementations, internal runbooks, or tickets.\n"
         "2. Enterprise Retrieval (Use Tools):\n"
         "   - If the user asks about company systems, code repos, PRs, tickets, incidents, runbooks, credentials, policies, or architecture, "
-        "     follow the Map-First discovery workflow: call 'catalog_discovery' first to get an overall view of available documents, then "
-        "     dispatch targeted retrieval calls (resource_lookup, hybrid_search, github_entity_search, keyword_search, semantic_search, graph_traversal).\n"
+        "     use enterprise retrieval tools.\n"
+        "   - Tool Preferences: Prefer 'hybrid_search' for searching runbooks, procedures, SOPs, and topic queries because it fuses vector semantics, "
+        "     BM25 keywords, and cross-encoder reranking to find the best chunks. Only use 'resource_lookup' when you specifically need the full sequential "
+        "     text of an already identified document or ticket (e.g. 'PAY-928'). Use 'catalog_discovery' when broad cross-connector exploration is needed.\n"
         "   - Search Filters: When calling 'hybrid_search', 'semantic_search', or 'keyword_search', do NOT pass arbitrary 'source' or 'resource_type' "
         "     filters unless the user explicitly named a specific platform in their question. Omit them to search all sources.\n"
         "   - Follow-up Resolution: If the user asks follow-up questions with pronouns ('it', 'that PR', 'that ticket', 'who approved it?'), "
@@ -205,6 +207,35 @@ Guidelines for Tool Selection:
 
         if not internal_messages or internal_messages[0].role != MessageRole.SYSTEM:
             internal_messages.insert(0, Message(role=MessageRole.SYSTEM, content=self.REASONER_SYSTEM_PROMPT))
+
+        # Check if the query is a meta-conversational inquiry or greeting that should be answered directly without tool distraction
+        active_query = state.get("current_query") or state.get("query") or ""
+        is_first_turn = (state.get("turn_count", 0) == 0)
+        
+        is_meta_query = False
+        if is_first_turn and active_query:
+            import re
+            q_clean = active_query.strip().lower()
+            meta_patterns = [
+                r"\b(last|previous|earlier)\s+(question|message|query|prompt|turn)\b",
+                r"\bwhat\s+(was|were)\s+(the|my)\s+(last|previous|earlier)\b",
+                r"\bwhat\s+did\s+(i|we)\s+(ask|say|discuss|talk\s+about)\b",
+                r"\b(repeat|summarize)\s+(our\s+)?(chat|conversation|last\s+answer|previous\s+answer)\b",
+                r"^\s*(hello|hi|hey|greetings|good\s+(morning|afternoon|evening))\b",
+                r"^\s*(who\s+are\s+you|what\s+can\s+you\s+do|help)\s*\??$",
+            ]
+            if any(re.search(p, q_clean) for p in meta_patterns):
+                is_meta_query = True
+
+        if is_meta_query:
+            raw_content = self.llm_provider.generate(internal_messages)
+            content_str = raw_content if isinstance(raw_content, str) else getattr(raw_content, "content", str(raw_content))
+            ai_msg = AIMessage(content=content_str)
+            return {
+                "messages": [ai_msg],
+                "answer": content_str,
+                "turn_count": turn_count,
+            }
 
         # Invoke LLM with available tools
         response: LLMResponse = self.llm_provider.generate_with_tools(
@@ -428,18 +459,23 @@ Guidelines for Tool Selection:
         answer = state.get("answer")
         citations = []
 
+        executed_any_tools = any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in state.get("messages", []))
+
         if not answer:
             # Generate grounded answer from retrieved chunks
-            _, citations = ContextBuilder.build_context(chunks)
+            if chunks:
+                _, citations = ContextBuilder.build_context(chunks)
             gen_res = self.answer_generator.generate_answer(
                 query=state["query"],
                 chunks=chunks,
                 conversation_history=_to_internal_messages(state.get("messages", [])),
             )
             answer = gen_res["answer"]
-        elif chunks:
+        elif chunks and executed_any_tools:
             # If answer was formulated directly and tools were executed in this turn
             _, citations = ContextBuilder.build_context(chunks)
+        else:
+            citations = []
 
         # Append final AIMessage to messages for state checkpointing across turns
         last_msg = state.get("messages", [])[-1] if state.get("messages") else None

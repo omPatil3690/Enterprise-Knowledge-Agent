@@ -2357,3 +2357,56 @@ This document maintains a chronological record of all architectural decisions, c
 - [`backend/evaluation/tests/test_evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/tests/test_evaluator.py) (Modified)
 - [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
 
+---
+
+## Step 96: Prioritized Hybrid Search over Resource Lookup & Hardened Meta/General Direct Answering
+- **Date:** 2026-09-26
+- **Time:** 12:51 IST
+- **Purpose:** Resolved excessive `resource_lookup` invocation by prioritizing `hybrid_search` across catalog guidance and evaluator prompts, eliminated command biases in tool descriptions, and added zero-tool conversational routing and direct answering for meta-conversational / chat-history queries.
+- **Root Cause & Fixes:**
+  1. **Excessive `resource_lookup` in Catalog Inference ([`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py)):**
+     - Previously `_infer_default_tool()` recommended `resource_lookup` for all document sources (`jira`, `dropbox`, `notion`, `confluence`, `gmail`), causing the planner to repeatedly fetch entire raw documents instead of ranking high-precision chunks.
+     - Updated `_infer_default_tool()` to recommend **`hybrid_search`** for documents, runbooks, SOPs, specifications, and policies across Dropbox, Notion, Confluence, Gmail, and GitHub. `resource_lookup` is reserved strictly for specific Jira issue keys (e.g. `PAY-928`) or explicit full-document lookups.
+     - Aligned `CATALOG_REASONER_PROMPT` to designate `hybrid_search` as the recommended default.
+  2. **Tool Definition Description De-Biasing ([`backend/agent/tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tools.py) & [`backend/agent/langchain_tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langchain_tools.py)):**
+     - Removed imperative directives like `"PRIMARY DISCOVERY TOOL: Always invoke this tool FIRST"` from `catalog_discovery`, which caused small local LLMs (e.g. LLaMA 3.1 8B) to trigger tool calls even on basic conversational and definition questions.
+     - Clarified `resource_lookup` description to emphasize that it is only for known document titles/URIs, while `hybrid_search` is preferred for general topic inquiries and finding relevant chunks.
+  3. **Evaluator Tool Prioritization ([`backend/evaluation/evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/evaluator.py)):**
+     - Promoted `hybrid_search` to the top recommended tool when evidence is insufficient (`RETRIEVE_MORE`), enabling multi-modal vector + BM25 + Cross-Encoder reranking over raw file dumps.
+  4. **Direct Meta-Conversational Query Routing ([`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py)):**
+     - Added conversational pattern detection in `_reasoner_node` for meta-queries (e.g. *"what was the last question I asked?"*, *"summarize our chat"*, *"repeat previous answer"*, greetings).
+     - Bypasses tool definition injection on meta queries, calling `llm_provider.generate()` directly over conversation history to output immediate answers in 1 turn (~0.5s) with 0 tool calls.
+     - Updated `_generator_node` to ensure direct answers carry `citations = []` without stale historical chunks leaking into citation references.
+  5. **Unit Testing & Verification ([`backend/agent/tests/test_conversation_threads.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tests/test_conversation_threads.py)):**
+     - Added `test_meta_conversational_query_direct_answer` verifying 0 tool calls and 0 citations on chat-history inquiries.
+     - Verified 100% test pass rate across all 119 unit tests in the pytest suite (`119 passed in 28.43s`).
+
+### Files Created / Modified:
+- [`backend/retrieval/catalog.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/retrieval/catalog.py) (Modified)
+- [`backend/evaluation/evaluator.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/evaluation/evaluator.py) (Modified)
+- [`backend/agent/tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tools.py) (Modified)
+- [`backend/agent/langchain_tools.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langchain_tools.py) (Modified)
+- [`backend/agent/langgraph_planner.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/langgraph_planner.py) (Modified)
+- [`backend/agent/tests/test_conversation_threads.py`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/backend/agent/tests/test_conversation_threads.py) (Modified)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
+
+---
+
+## Step 97: Documented TOON Serialization & Query Scope Modifier Directives (`@enterprise`, `@general`, `@web`, `@connector`)
+- **Date:** 2026-09-26
+- **Time:** 13:07 IST
+- **Purpose:** Documented pending TOON (Token-Oriented Object Notation) compact representation in `docs/NOTES.md` and authored comprehensive architectural guide and design specification in `docs/query_scope_modifiers.md` for explicit user query scope commands (`@enterprise`, `@general`, `@docs`, `@llm`, `@web`, `@jira`, `@github`, etc.).
+- **Deliverables:**
+  1. **Personal Notes Tracking ([`docs/NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/docs/NOTES.md)):**
+     - Added Item 7 capturing TOON formatting roadmap for OKF concept bundles, global index manifests, and chunk payloads to minimize prompt tokens and accelerate local model inference.
+     - Added Item 8 capturing explicit query scope modifiers and referencing the design guide.
+  2. **Query Scope Modifiers Specification ([`docs/query_scope_modifiers.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/docs/query_scope_modifiers.md)):**
+     - Detailed command matrix covering `@enterprise` / `@docs` (forced enterprise tools), `@general` / `@llm` (bypasses tools for 0s latency), `@web` (external search), and `@<connector>` (targeted platform pre-filtering).
+     - Full regex parsing specification (`SCOPE_PREFIX_PATTERN`), query normalization pipeline, and LangGraph `_reasoner_node` deterministic fast-path routing.
+     - TOON compact header syntax and token efficiency savings analysis (~60-75% reduction vs standard JSON).
+
+### Files Created / Modified:
+- [`docs/NOTES.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/docs/NOTES.md) (Modified)
+- [`docs/query_scope_modifiers.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/docs/query_scope_modifiers.md) (Created)
+- [`claude.md`](file:///Users/ompatil/Desktop/Enterprise-Knowledge-Agent/claude.md) (Updated)
+

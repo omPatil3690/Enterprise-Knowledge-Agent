@@ -61,13 +61,12 @@ Your job is to analyze a user question against a set of candidate documents from
 For each candidate document:
 1. Determine how relevant it is to answering the user question.
 2. Assign a confidence score from 0.0 to 1.0.
-3. Recommend the optimal specialized retrieval tool to fetch the full information:
-   - "resource_lookup": For full runbooks, Jira tickets (e.g. PAY-928), API specifications, or Notion pages by title or URI.
+3. Recommend the optimal specialized retrieval tool to fetch the information:
+   - "hybrid_search": RECOMMENDED default for searching runbooks, procedures, specifications, and finding the most relevant chunks using semantic vectors + BM25 + reranking.
+   - "resource_lookup": For full document retrieval by exact document title or Jira ticket key (e.g. 'PAY-928') when full sequential text is needed.
    - "github_entity_search": For PR details, commit authors, file contributors, or code relationships in GitHub.
+   - "keyword_search": For exact error codes or specific technical identifiers.
    - "graph_traversal": For parent-child document trees or sequential workflow steps.
-   - "keyword_search": For exact error codes, ticket IDs, or specific identifiers.
-   - "semantic_search": For high-level conceptual questions, architectural overviews, and policy runbooks.
-   - "hybrid_search": For multi-modal queries needing combined semantic vectors, BM25 keywords, and entity graph traversal.
 4. Provide the exact recommended arguments for calling that tool.
 
 Respond STRICTLY with a valid JSON array of objects with the following schema:
@@ -76,9 +75,9 @@ Respond STRICTLY with a valid JSON array of objects with the following schema:
   {
     "resource_uri": "https://jira.company.com/browse/PAY-928",
     "confidence": 0.95,
-    "recommended_tool": "resource_lookup",
+    "recommended_tool": "hybrid_search",
     "recommended_arguments": {
-      "resource_id": "PAY-928"
+      "query": "PAY-928 3DS authentication timeout"
     },
     "reasoning": "Contains the root cause and status for the 3DS timeout incident."
   }
@@ -371,9 +370,13 @@ Analyze the candidates and return a JSON array with confidence scores and recomm
             # If entry represents a PR or code repository, recommend github_entity_search
             if any(e.startswith("PR #") for e in entry.key_entities) or "pull" in entry.resource_uri:
                 return "github_entity_search"
-            return "resource_lookup"
-        if entry.source in ("jira", "dropbox", "notion", "confluence", "gmail", "email"):
-            return "resource_lookup"
+            return "hybrid_search"
+        if entry.source == "jira" or entry.resource_type == "issue":
+            jira_keys = [e for e in entry.key_entities if re.match(r"^[A-Z]{2,10}-\d+$", e)]
+            if jira_keys:
+                return "resource_lookup"
+            return "hybrid_search"
+        # For general documentation, runbooks, SOPs, policies across Dropbox, Notion, Confluence, Gmail
         return "hybrid_search"
 
     def _infer_default_arguments(self, entry: CatalogEntry, tool: str) -> Dict[str, Any]:
@@ -396,7 +399,8 @@ Analyze the candidates and return a JSON array with confidence scores and recomm
                 return {"operation": "get_pr_details", "target": pr_num}
             return {"operation": "get_repo_overview", "target": entry.title}
 
-        if tool == "keyword_search":
+        if tool in ("hybrid_search", "keyword_search", "semantic_search"):
             return {"query": entry.title}
 
         return {"query": entry.title}
+

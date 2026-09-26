@@ -336,9 +336,9 @@ def create_langchain_tools(
     hybrid_tool = StructuredTool.from_function(
         name="hybrid_search",
         description=(
-            "Execute unified multi-modal hybrid search across vector embeddings, BM25+ keywords, and "
-            "knowledge graph entities using Reciprocal Rank Fusion (RRF). Ideal when a query contains both "
-            "conceptual requirements and exact technical tokens (e.g. error codes, identifiers, function names)."
+            "Preferred default search tool: Executes unified multi-modal hybrid search across vector embeddings, "
+            "BM25+ keywords, and knowledge graph entities using Reciprocal Rank Fusion (RRF) with cross-encoder reranking. "
+            "Ideal for searching runbooks, procedures, SOPs, topics, error codes, and technical documentation across all platforms."
         ),
         func=run_hybrid_search,
         args_schema=HybridSearchInput,
@@ -367,9 +367,10 @@ def create_langchain_tools(
     resource_tool = StructuredTool.from_function(
         name="resource_lookup",
         description=(
-            "Retrieve complete text and metadata of a specific document, runbook, SOP, API specification, or policy "
-            "by its document title, topic name, canonical URI (e.g. 'github://...', 'https://...'), URL, or chunk ID. "
-            "Reconstructs the full document in sequential reading order."
+            "Retrieve the complete sequential text of a specific known document, runbook, or ticket by exact "
+            "document title, canonical URI (e.g. 'jira://issue/PAY-928', 'https://...'), URL, or document ID. "
+            "Use ONLY when you already know the specific document title or ticket key to read. "
+            "For general topic searching, finding relevant chunks, or broad inquiries, use hybrid_search instead."
         ),
         func=run_resource_lookup,
         args_schema=ResourceLookupInput,
@@ -401,10 +402,9 @@ def create_langchain_tools(
     catalog_tool = StructuredTool.from_function(
         name="catalog_discovery",
         description=(
-            "PRIMARY DISCOVERY TOOL: Always invoke this tool FIRST when exploring enterprise knowledge, "
-            "investigating questions, or planning cross-connector retrieval. Inspects the Global Master Index "
-            "(global_index.md) and sync ledger (global_log.md) across all 6 platforms (GitHub, Jira, Notion, "
-            "Dropbox, Gmail, Confluence). Returns a high-density manifest with confidence scores and recommended tools."
+            "Inspect the Global Master Index (global_index.md) and sync ledger (global_log.md) across all 6 platforms "
+            "(GitHub, Jira, Notion, Dropbox, Gmail, Confluence) to discover relevant enterprise assets, runbooks, PRs, and "
+            "tickets for enterprise-specific queries. DO NOT use for general definitions or conversation history."
         ),
         func=run_catalog_discovery,
         args_schema=CatalogDiscoveryInput,

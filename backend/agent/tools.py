@@ -128,12 +128,9 @@ def create_default_tool_registry(
     catalog_discovery_def = ToolDefinition(
         name="catalog_discovery",
         description=(
-            "PRIMARY DISCOVERY TOOL: Always invoke this tool FIRST when exploring enterprise knowledge, "
-            "investigating questions, or planning cross-connector retrieval. Inspects the Global Master Index "
-            "(global_index.md) and knowledge sync ledger (global_log.md) across all 6 platforms (GitHub, Jira, "
-            "Notion, Dropbox, Gmail, Confluence). Returns a high-density cross-connector manifest of matching "
-            "documents, PRs, runbooks, and tickets with confidence scores (0.0 to 1.0) and recommended retrieval "
-            "tools to guide your execution plan."
+            "Inspect the Global Master Index (global_index.md) and knowledge sync ledger (global_log.md) across all 6 "
+            "platforms (GitHub, Jira, Notion, Dropbox, Gmail, Confluence) to discover relevant enterprise assets, runbooks, "
+            "PRs, and tickets for enterprise-specific queries. DO NOT use for general definitions or conversation history."
         ),
         parameters={
             "type": "object",
@@ -291,16 +288,17 @@ def create_default_tool_registry(
     resource_lookup_def = ToolDefinition(
         name="resource_lookup",
         description=(
-            "Retrieve complete text and metadata of a specific document, runbook, SOP, API specification, "
-            "or policy by its document title, topic name, canonical URI (e.g. 'github://...', 'https://...'), URL, "
-            "or chunk ID. Reconstructs the full document in sequential reading order with complete section paths."
+            "Retrieve the complete sequential text of a specific known document, runbook, or ticket by exact "
+            "document title, canonical URI (e.g. 'jira://issue/PAY-928', 'https://...'), URL, or document ID. "
+            "Use ONLY when you already know the specific document title or ticket key to read. "
+            "For general topic searching, finding relevant chunks, or broad inquiries, use hybrid_search instead."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "resource_id": {
                     "type": "string",
-                    "description": "Document title (e.g. 'Disaster Recovery Runbook', 'Payments API Specification'), topic name, canonical URI, URL, or chunk ID to retrieve.",
+                    "description": "Exact document title, Jira ticket key (e.g. 'PAY-928'), canonical URI, URL, or chunk ID to retrieve in full.",
                 },
             },
             "required": ["resource_id"],
